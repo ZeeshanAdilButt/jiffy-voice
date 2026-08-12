@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jiffy-voice
+  labels:
+    app: jiffy-voice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jiffy-voice
+  template:
+    metadata:
+      labels:
+        app: jiffy-voice
+    spec:
+      containers:
+        - name: jiffy-voice
+          image: jiffy-voice:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: jiffy-voice-config
+            - secretRef:
+                name: jiffy-voice-secrets
+          # A request is a table lookup and some string comparison against
+          # candidates the caller sent. No connection is opened, nothing is
+          # cached between calls, and memory does not grow with traffic.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          # Both probes tell the truth here rather than differing for the
+          # sake of it: there is nothing behind this service for readiness
+          # to check that liveness has not already proved. Keeping them
+          # separate still matters, because the day this grows a dependency
+          # is the day only one of them should start failing.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL

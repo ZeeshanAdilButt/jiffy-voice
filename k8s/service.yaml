@@ -1,0 +1,17 @@
+# Plain ClusterIP over HTTP. Every request is answered from its own body,
+# so there is nothing to keep a caller pinned to a pod for: no session
+# affinity, no sticky routing, no shared bus between replicas.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jiffy-voice
+  labels:
+    app: jiffy-voice
+spec:
+  selector:
+    app: jiffy-voice
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP

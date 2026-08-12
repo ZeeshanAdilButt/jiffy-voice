@@ -1,3 +1,7 @@
 pnpm-lock.yaml
 dist
 coverage
+# Manifests get diffed against `kubectl get -o yaml`, which quotes with
+# double quotes. Keeping them conventional matters more here than matching
+# the repo's string style.
+k8s

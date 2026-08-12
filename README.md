@@ -95,6 +95,7 @@ choice, not a rewrite.
 - [Extending the vocabulary](#extending-the-vocabulary)
 - [Running it as a service](#running-it-as-a-service)
 - [Configuration](#configuration)
+- [Kubernetes](#kubernetes)
 - [Architecture](#architecture)
 - [Status](#status)
 - [Development](#development)
@@ -488,6 +489,21 @@ The service reads:
 | `MIN_CONFIDENCE`    |                  | Confidence floor, applied to every request   |
 | `LOG_LEVEL`         |                  | Defaults to `info`                           |
 
+## Kubernetes
+
+Deployment, Service, ConfigMap, Secret template, and an HPA are in
+[k8s/](./k8s/README.md).
+
+```
+make k8s-validate     # client-side validation, no cluster needed
+make k8s-deploy       # applies k8s/ to the current context
+```
+
+Nothing coordinates between replicas and nothing needs to: every request
+carries the candidate list it wants resolved and is answered from its own
+body, so adding pods is the whole of horizontal scaling and losing one
+costs nothing but the requests in flight on it.
+
 ## Architecture
 
 Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
@@ -518,8 +534,8 @@ Working and tested, but young. Both modes, both recognition ports, the
 decision and fallback layers, and the extensibility surface are in place
 and covered by 597 tests. Treat the API as unstable until 1.0.
 
-Not here yet: Kubernetes manifests, a release workflow, and any recognizer
-beyond the browser's own.
+Not here yet: a release workflow, and any recognizer beyond the browser's
+own.
 
 ## Development
 

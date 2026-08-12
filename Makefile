@@ -66,3 +66,14 @@ example-embedded: ## Run the in-process example
 
 example-fast-path: ## Run the fast-path and fallback example
 	pnpm example:fast-path
+
+## Kubernetes
+
+k8s-validate: ## Validate manifests, no cluster needed
+	kubectl kustomize k8s/ | kubectl apply --dry-run=client -f -
+
+k8s-deploy: ## Apply manifests to the current context
+	kubectl apply -k k8s/
+
+k8s-delete: ## Remove manifests from the current context
+	kubectl delete -k k8s/

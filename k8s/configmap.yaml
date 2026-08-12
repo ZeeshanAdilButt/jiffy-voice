@@ -1,0 +1,20 @@
+# Non-secret configuration. JWT_SECRET, or JWT_JWKS_URI if the platform in
+# front of this rotates keys, lives in the Secret instead - see
+# secret.yaml.example.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jiffy-voice-config
+data:
+  PORT: "8080"
+  LOG_LEVEL: "info"
+  # Comma-separated words the host application is addressed by, stripped
+  # off the front of every utterance.
+  # WAKE_WORDS: "jiffy"
+  # Confidence floor below which a command is reported as UNKNOWN.
+  # MIN_CONFIDENCE: "0.5"
+  # Uncomment and set these if the host platform's tokens carry a
+  # non-default issuer, audience, or user id claim.
+  # JWT_ISSUER: ""
+  # JWT_AUDIENCE: ""
+  # JWT_USER_ID_CLAIM: ""
