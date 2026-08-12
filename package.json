@@ -1,0 +1,62 @@
+{
+  "name": "jiffy-voice",
+  "version": "0.1.0",
+  "description": "Turn spoken commands into typed time-tracking intents. Embed it as a package or run it as an HTTP service.",
+  "keywords": [
+    "voice",
+    "speech",
+    "intent",
+    "nlu",
+    "command-parser",
+    "time-tracking",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZeeshanAdilButt/jiffy-voice.git"
+  },
+  "homepage": "https://github.com/ZeeshanAdilButt/jiffy-voice#readme",
+  "bugs": {
+    "url": "https://github.com/ZeeshanAdilButt/jiffy-voice/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.19.0",
+    "prettier": "^3.4.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^3.0.4"
+  }
+}
