@@ -48,6 +48,7 @@ Everything app-specific happens behind a port you fill in.
 - [Quickstart](#quickstart)
 - [What it understands](#what-it-understands)
 - [Resolving a name](#resolving-a-name)
+- [Listening](#listening)
 - [Speech to text](#speech-to-text)
 - [Confidence](#confidence)
 - [Configuration](#configuration)
@@ -160,10 +161,41 @@ If none of that fits, implement `TargetResolver` yourself. It receives the
 spoken name and the command it came from, and returns one of your records
 or nothing. Nothing else in the package notices.
 
+## Listening
+
+In a browser, `WebSpeechRecognizer` drives the engine that is already there:
+
+```ts
+import { isWebSpeechSupported, WebSpeechRecognizer } from 'jiffy-voice'
+
+if (!isWebSpeechSupported()) {
+  // Firefox and every non-browser runtime land here. Offer a text field.
+}
+
+const recognizer = new WebSpeechRecognizer({ language: 'en-US' })
+
+const session = recognizer.start({
+  onInterim: (words) => showWhileSpeaking(words),
+  onResult: async ({ transcript }) => {
+    if (transcript.length > 0) apply(await voice.handleText(transcript))
+  },
+  onError: (error) => showProblem(error),
+})
+
+micButton.onpointerup = () => session.stop()
+escapeKey.onpress = () => session.abort()
+```
+
+Nothing is read from the global object until `start`, so the import is safe
+in a server bundle. A denied microphone, a missing one, and an unreachable
+recognition service arrive as `MicrophonePermissionDeniedError`,
+`AudioCaptureError`, and `RecognizerNetworkError`. Silence does not arrive
+as an error at all: it ends the session with an empty transcript, because
+hearing nothing is an answer.
+
 ## Speech to text
 
-There is no recognizer in here. Implement `SpeechToText` over whichever one
-you already use:
+For a recognizer you feed audio to instead, implement `SpeechToText`:
 
 ```ts
 import { createEmbeddedVoice, type SpeechToText } from 'jiffy-voice'
@@ -230,14 +262,20 @@ Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
 model, or network dependency. It depends only on interfaces in `src/ports`,
 and adapters implement them:
 
-| Port             | Purpose                               | Implementations       |
-| ---------------- | ------------------------------------- | --------------------- |
-| `SpeechToText`   | Audio to transcript                   | bring your own        |
-| `IntentParser`   | Transcript to intent                  | `adapters/rule-based` |
-| `TargetResolver` | Spoken name to one of your record ids | `adapters/fuzzy`      |
+| Port               | Purpose                               | Implementations       |
+| ------------------ | ------------------------------------- | --------------------- |
+| `SpeechRecognizer` | Live microphone to transcript         | `adapters/web-speech` |
+| `SpeechToText`     | Recorded audio to transcript          | bring your own        |
+| `IntentParser`     | Transcript to intent                  | `adapters/rule-based` |
+| `TargetResolver`   | Spoken name to one of your record ids | `adapters/fuzzy`      |
 
-`VoiceCommandService` is the whole of the core: it holds the three ports
-and knows the order to call them in. `createEmbeddedVoice` is a thin
+Recognition has two ports rather than one because the two are genuinely
+different shapes. A cloud recognizer takes bytes you already have and
+answers once; a browser engine owns the microphone, has no bytes to hand
+over, and revises its guess as someone talks.
+
+`VoiceCommandService` is the whole of the core: it holds the ports and
+knows the order to call them in. `createEmbeddedVoice` is a thin
 factory over it that picks sensible adapters.
 
 `parseCommand` is the parser as a plain synchronous function, for callers
