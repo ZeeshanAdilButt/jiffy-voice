@@ -270,7 +270,9 @@ const voice = createEmbeddedVoice({ candidates })
 
 const session = new VoiceSession({
   recognizer: new WebSpeechRecognizer(),
-  handle: (transcript) => voice.interpret(transcript),
+  // The second argument is the recognizer's whole answer when there was
+  // one, so its alternatives survive rather than being dropped for a string.
+  handle: (transcript, heard) => voice.interpret(heard ?? transcript),
 })
 
 session.subscribe((state) => render(state))
@@ -583,13 +585,26 @@ embedder's bundle.
 
 ## Status
 
-Working and tested, but young. Both modes, both recognition ports, the
-decision and fallback layers, and the extensibility surface are in place
-and covered by 597 tests. Treat the API as unstable until 1.0.
+Working and tested, but young. Treat the API as unstable until 1.0.
 
-Recognizers are a browser adapter, an adapter over a platform engine a
-host wraps, and one over a cloud HTTP API. Nothing bundles a native
-module.
+In place: both modes, both recognition ports with three adapters between
+them, the decision and fallback layers, the extensibility surface,
+Kubernetes manifests, and a tag-triggered release. Covered by 672 tests,
+including an end-to-end suite that runs the real pieces together.
+
+Known limits, none of them hidden anywhere else in this document:
+
+- One utterance is one command. A sentence holding two parses as the
+  first, and the second is lost rather than forwarded.
+- English only. The folding step reduces text to lowercase ASCII, so an
+  utterance in another script comes back empty, which reads as having
+  heard nothing.
+- `START_TRACKING` carries no duration, so "start tracking for 30 minutes"
+  starts a timer and drops the 30 minutes.
+- Nothing bundles a native speech module, by design. React Native hosts
+  write the small wrapper shown above.
+- The container image and the k8s manifests are validated but have not
+  been run against a real daemon or cluster from this repository.
 
 ## Development
 

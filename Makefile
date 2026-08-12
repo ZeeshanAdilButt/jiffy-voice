@@ -1,9 +1,13 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev build clean check lint format format-fix typecheck test test-watch \
-        example-embedded example-fast-path
+        test-integration up down logs image image-run example-embedded example-fast-path \
+        example-browser k8s-validate k8s-deploy k8s-delete
+
+COMPOSE ?= docker compose
+IMAGE ?= jiffy-voice:local
 
 help: ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 ## Development
@@ -14,7 +18,7 @@ install: ## Install dependencies
 dev: ## Rebuild on change
 	pnpm dev
 
-build: ## Build the package
+build: ## Build the package and the service entry point
 	pnpm build
 
 clean: ## Remove build output
@@ -36,13 +40,13 @@ format-fix: ## Apply formatting
 typecheck: ## Typecheck source and examples
 	pnpm typecheck
 
-test: ## Run the test suite
+test: ## Every test, including the end-to-end suite
 	pnpm test
 
 test-watch: ## Tests in watch mode
 	pnpm test:watch
 
-test-integration: ## Just the end-to-end suite, which the default run includes anyway
+test-integration: ## Just the end-to-end suite, which test already includes
 	pnpm test:integration
 
 ## Docker
@@ -60,7 +64,9 @@ image: ## Build the container image
 	docker build -t $(IMAGE) .
 
 image-run: ## Run the built image
-	docker run --rm -p 8080:8080 		-e JWT_SECRET=$${JWT_SECRET:-local-dev-secret-do-not-use-in-production} 		$(IMAGE)
+	docker run --rm -p 8080:8080 \
+		-e JWT_SECRET=$${JWT_SECRET:-local-dev-secret-do-not-use-in-production} \
+		$(IMAGE)
 
 ## Examples
 
