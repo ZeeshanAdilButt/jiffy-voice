@@ -12,3 +12,4 @@ export type {
 } from './speech-recognizer.js'
 export type { IntentParser } from './intent-parser.js'
 export type { ResolveContext, TargetCandidate, TargetResolver } from './target-resolver.js'
+export type { TokenVerifier, VerifiedIdentity } from './token-verifier.js'

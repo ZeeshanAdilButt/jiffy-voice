@@ -104,6 +104,7 @@ make example-fast-path
 - [Confidence](#confidence)
 - [Deciding what to do](#deciding-what-to-do)
 - [Configuration](#configuration)
+- [Running it as a service](#running-it-as-a-service)
 - [Architecture](#architecture)
 - [Status](#status)
 - [Development](#development)
@@ -114,8 +115,10 @@ make example-fast-path
 npm install jiffy-voice
 ```
 
-Node 20 or newer. Ships ESM and CJS builds with type declarations, and has
-no runtime dependencies.
+Node 20 or newer. Ships ESM and CJS builds with type declarations. The
+package entry point imports nothing outside itself, so a browser bundle of
+it carries only this code; express, jose, and pino are reached only
+through `jiffy-voice/server`.
 
 ## Quickstart
 
@@ -388,6 +391,71 @@ candidate list without going back through recognition.
 defaults cover the obvious ones; an app whose users say "sprint" or
 "client" supplies its own.
 
+## Running it as a service
+
+Same core, reached over HTTP instead of by function call. Useful when the
+caller is not a JavaScript process, or when several are and you would
+rather deploy the vocabulary once than ship it to each of them.
+
+```
+docker compose up
+```
+
+Or mount the app in a process you already run:
+
+```ts
+import { createHttpApp } from 'jiffy-voice/server'
+```
+
+One endpoint. The candidate list travels with the request, because the
+service holds no state and has no way to know what your records are:
+
+```
+POST /commands
+Authorization: Bearer <token>
+
+{
+  "transcript": "start tracking time for my deen goal",
+  "candidates": [{ "id": "goal_42", "name": "Deen", "kind": "goal" }]
+}
+```
+
+The response body is a `VoiceOutcome`, the same type `interpret` returns
+in process, so a consumer can share one set of types across both modes and
+switch between them without touching the code that reads the answer.
+
+| Method | Path      | Purpose                                     |
+| ------ | --------- | ------------------------------------------- |
+| POST   | /commands | Interpret a transcript. 200 with an outcome |
+| GET    | /health   | Liveness. Unauthenticated                   |
+| GET    | /ready    | Readiness. Unauthenticated                  |
+
+Errors: 400 for a malformed body, naming the field; 401 for a missing or
+rejected token. An utterance the service cannot handle is not an error,
+it is a 200 with a `fallback` outcome.
+
+Optional per-request overrides: `wakeWords`, `kindWords`, `minConfidence`,
+and `policy`, each falling back to the deployment default.
+
+| Variable            | Required         | Purpose                                      |
+| ------------------- | ---------------- | -------------------------------------------- |
+| `JWT_SECRET`        | one of these two | HMAC secret for token verification           |
+| `JWT_JWKS_URI`      |                  | JWKS endpoint, wins if both are set          |
+| `PORT`              |                  | Defaults to 8080                             |
+| `JWT_ISSUER`        |                  | Expected `iss` claim, if your tokens set one |
+| `JWT_AUDIENCE`      |                  | Expected `aud` claim, if your tokens set one |
+| `JWT_USER_ID_CLAIM` |                  | Claim holding the user id, defaults to `sub` |
+| `WAKE_WORDS`        |                  | Comma-separated, applied to every request    |
+| `MIN_CONFIDENCE`    |                  | Confidence floor, applied to every request   |
+| `LOG_LEVEL`         |                  | Defaults to `info`                           |
+
+Tokens are verified through the same `TokenVerifier` interface the JWT
+adapter implements, so a platform with its own scheme swaps the adapter
+out. The service resolves against candidates the request supplies and
+keeps nothing between calls, so the identity in the token decides nothing:
+the check is there to keep the endpoint from being open, and to put a
+caller in the logs.
+
 ## Architecture
 
 Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
@@ -412,6 +480,11 @@ factory over it that picks sensible adapters.
 
 `parseCommand` is the parser as a plain synchronous function, for callers
 that have a transcript already and would rather not await anything.
+
+`src/http` and `src/server` are the service-mode adapters, reachable only
+through the `jiffy-voice/server` subpath. Nothing under `src/index.ts`
+imports anything in them, which is what keeps a web framework out of an
+embedder's bundle.
 
 ## Status
 

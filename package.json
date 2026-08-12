@@ -29,6 +29,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
     }
   },
   "files": [
@@ -41,6 +46,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "start": "node dist/main.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -52,13 +58,22 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.5",
+    "@types/supertest": "^7.2.1",
     "eslint": "^9.19.0",
     "prettier": "^3.4.2",
+    "supertest": "^7.2.2",
     "tsup": "^8.3.5",
     "tsx": "^4.23.12",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.19.1",
     "vitest": "^3.0.4"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "jose": "^6.2.8",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0"
   }
 }
