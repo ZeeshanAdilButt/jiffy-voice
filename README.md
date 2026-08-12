@@ -43,16 +43,58 @@ Everything app-specific happens behind an interface you implement.
 
 ## Status
 
-Early. The intent model, ports, parser, and resolver are landing one at a
-time; treat the API as unstable until 1.0. Follow
-[releases](https://github.com/ZeeshanAdilButt/jiffy-voice/releases) for
-what is actually usable.
+Early. The intent model, the ports, and the rule-based parser are in
+place; target resolution and the wiring that ties them together are
+landing next. Treat the API as unstable until 1.0.
 
 ## Install
 
 ```
 npm install jiffy-voice
 ```
+
+## Parsing
+
+```ts
+import { parseCommand } from 'jiffy-voice'
+
+parseCommand('log an hour and a half to my deen goal')
+// {
+//   type: 'LOG_TIME',
+//   target: { kind: 'goal', name: 'deen' },
+//   durationMinutes: 90,
+//   confidence: 0.9,
+//   transcript: 'log an hour and a half to my deen goal'
+// }
+```
+
+The parser is a fixed phrase table. No model, no network, no dependency,
+and the same answer every time for the same input, which means the
+phrasings it handles are the ones in its test suite and nothing else
+quietly changes underneath you.
+
+### What it understands
+
+| Intent           | Said as                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| `START_TRACKING` | start, start tracking X, begin, clock in on X, working on X             |
+| `STOP_TRACKING`  | stop, stop tracking, clock out, I'm done, wrap up                       |
+| `PAUSE`          | pause, pause the timer, hold on, take a break                           |
+| `RESUME`         | resume, unpause, continue, keep going, back to work                     |
+| `LOG_TIME`       | log 30 minutes to X, I spent an hour and a half on X, bill 2 hours to X |
+
+Anything else comes back as `UNKNOWN` with the transcript attached.
+Acting on a misread command costs a user more than being asked to repeat
+themselves, so the parser does not guess: "cancel" is not a stop, and
+"log time for my deen goal" with no duration in it is not a start.
+
+Durations are read as spoken: `30 minutes`, `1h 30m`, `half an hour`,
+`an hour and a half`, `three quarters of an hour`, `90 seconds`.
+
+Filler, politeness, and casing are removed before matching, so "hey, can
+you start tracking my deen goal please?" and "start tracking deen" reach
+the same rule. One utterance is one command; a sentence holding two of
+them parses as the first.
 
 ## Architecture
 
