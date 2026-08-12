@@ -99,6 +99,7 @@ choice, not a rewrite.
 - [Architecture](#architecture)
 - [Status](#status)
 - [Development](#development)
+- [Releasing](#releasing)
 
 ## Install
 
@@ -534,8 +535,7 @@ Working and tested, but young. Both modes, both recognition ports, the
 decision and fallback layers, and the extensibility surface are in place
 and covered by 597 tests. Treat the API as unstable until 1.0.
 
-Not here yet: a release workflow, and any recognizer beyond the browser's
-own.
+Not here yet: any recognizer beyond the browser's own.
 
 ## Development
 
@@ -546,6 +546,20 @@ make test
 make check         # lint, typecheck, test, build
 make up            # the service, in Docker
 ```
+
+## Releasing
+
+Push a tag matching `v*`. CI builds and pushes the container image to GHCR
+and publishes the npm package.
+
+The two halves are independent. The image needs no secret beyond the
+repository's own token; the npm publish needs an `NPM_TOKEN` repository
+secret, and skips with a warning rather than failing the run when there
+isn't one.
+
+That token has to be an **automation** token. A classic or granular token
+belonging to an account with two-factor auth enabled gets a 403, because
+there is no second factor for CI to supply.
 
 ## License
 

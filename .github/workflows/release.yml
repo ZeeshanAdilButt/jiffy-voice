@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        # GHCR requires a lowercase image ref, and a GitHub owner or repo
+        # name is not guaranteed to be lowercase.
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  publish-package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for provenance. Without it the publish below fails after
+      # every other step has already passed.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      # A release does two independent things, and the image half needs no
+      # secret. A missing NPM_TOKEN should mean "this repo is not publishing
+      # to npm yet", not a failed run that also hides a successful image
+      # push. Adding the secret later needs no change here: the next tag
+      # picks it up.
+      #
+      # Checked as a step rather than a job-level condition because the
+      # secrets context is not available in `jobs.<id>.if`.
+      - name: Check for npm credentials
+        id: npm_credentials
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::NPM_TOKEN is not set, skipping npm publish. The container image still published."
+          fi
+
+      # Two things this line has to get right, both of which fail late and
+      # confusingly otherwise:
+      #
+      # --access public is required even though an unscoped package is
+      # public by default. npm rejects --provenance on a package's first
+      # publish unless access is stated explicitly.
+      #
+      # NPM_TOKEN must be an automation token. A classic or granular token
+      # from an account with two-factor auth enabled gets a 403 here,
+      # because there is no second factor to supply from CI. Automation
+      # tokens are exempt from the 2FA prompt by design.
+      - if: steps.npm_credentials.outputs.present == 'true'
+        run: pnpm publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
