@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev build clean check lint format format-fix typecheck test test-watch
+.PHONY: help install dev build clean check lint format format-fix typecheck test test-watch \
+        example-embedded
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -32,7 +33,7 @@ format: ## Check formatting
 format-fix: ## Apply formatting
 	pnpm format:write
 
-typecheck: ## Typecheck
+typecheck: ## Typecheck source and examples
 	pnpm typecheck
 
 test: ## Run the test suite
@@ -40,3 +41,8 @@ test: ## Run the test suite
 
 test-watch: ## Tests in watch mode
 	pnpm test:watch
+
+## Examples
+
+example-embedded: ## Run the in-process example
+	pnpm example:embedded

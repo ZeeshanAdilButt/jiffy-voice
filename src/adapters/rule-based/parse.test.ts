@@ -339,6 +339,24 @@ describe('things it refuses to guess at', () => {
     expect(typeOf('cancel the timer')).toBe('UNKNOWN')
   })
 
+  const questions = [
+    'what did i work on yesterday',
+    'when did i start tracking deen',
+    'why is the timer still running',
+    'which goal am i tracking',
+    'did i log time for deen',
+    'how long have i been working on deen',
+  ]
+
+  it.each(questions)('reads the question %j as unknown, whatever verb it contains', (say) => {
+    expect(typeOf(say)).toBe('UNKNOWN')
+  })
+
+  it('still takes a polite request, which only looks like a question', () => {
+    expect(typeOf('can you start tracking deen')).toBe('START_TRACKING')
+    expect(typeOf('could you stop the timer')).toBe('STOP_TRACKING')
+  })
+
   it('keeps the transcript on an unknown command so the host can show it', () => {
     expect(parseCommand('what time is it').transcript).toBe('what time is it')
   })

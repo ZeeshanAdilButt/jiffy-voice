@@ -27,8 +27,9 @@ into something your app can act on:
 ```
 
 It does not know what a goal is. It knows there is a name in that sentence
-and that the speaker wants to start tracking against it. Resolving "deen"
-to a real record is your app's job, behind an interface this calls.
+and that the speaker wants to start tracking against it. Turning "deen"
+into a real record happens behind an interface, and that interface is
+yours.
 
 ## Why
 
@@ -38,14 +39,21 @@ somewhere for the goal name, and no test that survives the next phrasing a
 real user tries. The parsing is the part worth writing once and testing
 properly, and it has nothing to do with any particular app's data model.
 
-So that is all this is. Audio or text goes in, a typed intent comes out.
-Everything app-specific happens behind an interface you implement.
+So that is all this is. Audio or text goes in, a typed command comes out.
+Everything app-specific happens behind a port you fill in.
 
-## Status
+## Contents
 
-Early. The intent model, the ports, the parser, and the resolver are in
-place; the service that wires them together is landing next. Treat the
-API as unstable until 1.0.
+- [Install](#install)
+- [Quickstart](#quickstart)
+- [What it understands](#what-it-understands)
+- [Resolving a name](#resolving-a-name)
+- [Speech to text](#speech-to-text)
+- [Confidence](#confidence)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Status](#status)
+- [Development](#development)
 
 ## Install
 
@@ -53,27 +61,43 @@ API as unstable until 1.0.
 npm install jiffy-voice
 ```
 
-## Parsing
+Node 20 or newer. Ships ESM and CJS builds with type declarations, and has
+no runtime dependencies.
+
+## Quickstart
 
 ```ts
-import { parseCommand } from 'jiffy-voice'
+import { createEmbeddedVoice } from 'jiffy-voice'
 
-parseCommand('log an hour and a half to my deen goal')
-// {
-//   type: 'LOG_TIME',
-//   target: { kind: 'goal', name: 'deen' },
-//   durationMinutes: 90,
-//   confidence: 0.9,
-//   transcript: 'log an hour and a half to my deen goal'
-// }
+const voice = createEmbeddedVoice({
+  // Whatever your app already has. Only the parts matching needs.
+  candidates: () => [
+    { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
+    { id: 'goal_43', name: 'Fitness', kind: 'goal' },
+    { id: 'task_7', name: 'Invoices', kind: 'task' },
+  ],
+})
+
+const { intent, target } = await voice.handleText('start tracking time for my deen goal')
+
+if (intent.type === 'START_TRACKING' && target !== null) {
+  startTimer(target.id) // goal_42
+}
 ```
 
-The parser is a fixed phrase table. No model, no network, no dependency,
-and the same answer every time for the same input, which means the
-phrasings it handles are the ones in its test suite and nothing else
-quietly changes underneath you.
+`handleAudio(clip)` is the same call with a recording instead of a string,
+once a [`SpeechToText`](#speech-to-text) adapter is configured.
 
-### What it understands
+Every part is replaceable and nothing is required: `createEmbeddedVoice()`
+with no arguments parses text and hands back the spoken name unresolved.
+
+A runnable version, including a misheard name and a command it refuses:
+
+```
+make example-embedded
+```
+
+## What it understands
 
 | Intent           | Said as                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
@@ -83,52 +107,128 @@ quietly changes underneath you.
 | `RESUME`         | resume, unpause, continue, keep going, back to work                     |
 | `LOG_TIME`       | log 30 minutes to X, I spent an hour and a half on X, bill 2 hours to X |
 
-Anything else comes back as `UNKNOWN` with the transcript attached.
-Acting on a misread command costs a user more than being asked to repeat
-themselves, so the parser does not guess: "cancel" is not a stop, and
-"log time for my deen goal" with no duration in it is not a start.
-
 Durations are read as spoken: `30 minutes`, `1h 30m`, `half an hour`,
 `an hour and a half`, `three quarters of an hour`, `90 seconds`.
 
-Filler, politeness, and casing are removed before matching, so "hey, can
-you start tracking my deen goal please?" and "start tracking deen" reach
-the same rule. One utterance is one command; a sentence holding two of
-them parses as the first.
+Filler, politeness, and casing come off before matching, so "hey, can you
+start tracking my deen goal please?" and "start tracking deen" reach the
+same rule.
+
+Anything else comes back as `UNKNOWN` with the transcript attached. Acting
+on a misread command costs a user more than being asked to repeat
+themselves, so the parser does not guess:
+
+- "cancel" is not a stop. One of those throws work away.
+- "log time for my deen goal" has no duration in it, so it is not a valid
+  log, and it is not promoted to a start either.
+- A question is not a command. "What did I work on yesterday" contains
+  "work on" and still parses as nothing.
+
+One utterance is one command. A sentence holding two of them parses as the
+first.
+
+`VoiceIntent` is a discriminated union, so `durationMinutes` exists only on
+`LOG_TIME` and `UNKNOWN` has no target field at all. Narrowing on `type`
+is the only way to reach either.
 
 ## Resolving a name
 
-The parser gives you the name a person said. Turning that into one of
-your records is the `TargetResolver` port. `FuzzyTargetResolver` covers
-it for a list of candidates you supply:
+The parser gives you the name a person said. Turning that into one of your
+records is the `TargetResolver` port, and `FuzzyTargetResolver` covers it
+for a candidate list you supply:
 
 ```ts
 import { FuzzyTargetResolver } from 'jiffy-voice'
 
-const resolver = new FuzzyTargetResolver(() => [
-  { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
-  { id: 'goal_43', name: 'Fitness', kind: 'goal' },
-])
+const resolver = new FuzzyTargetResolver(() => loadGoals())
 
 await resolver.resolve({ kind: 'goal', name: 'dean' })
 // { id: 'goal_42', name: 'Deen', kind: 'goal', score: 0.85, matchedOn: 'Deen' }
 ```
 
-Scoring is deterministic and tolerant of the errors recognizers actually
+Scoring is deterministic and tolerant of the mistakes recognizers actually
 make: a wrong vowel, a transposition, a plural, a compound word split in
-two, a name said in part. Pass a function rather than an array when your
-list changes; it is called on every resolve.
+two, a name said in part. Pass a function rather than an array when the
+list changes; it is called on every command.
 
 Two cases come back as `null` rather than a guess: nothing scored above
 the threshold, and the top two candidates were too close to tell apart.
-For the second, `rank()` returns the full scored list so you can ask the
-user which one they meant.
+For the second, `rank()` returns the full scored list, so you can ask
+which one they meant instead of picking one.
+
+If none of that fits, implement `TargetResolver` yourself. It receives the
+spoken name and the command it came from, and returns one of your records
+or nothing. Nothing else in the package notices.
+
+## Speech to text
+
+There is no recognizer in here. Implement `SpeechToText` over whichever one
+you already use:
+
+```ts
+import { createEmbeddedVoice, type SpeechToText } from 'jiffy-voice'
+
+const speechToText: SpeechToText = {
+  async transcribe(clip) {
+    const heard = await myRecognizer.run(clip.data, clip.mimeType)
+    return {
+      transcript: heard.best,
+      confidence: heard.confidence,
+      alternatives: heard.rest, // optional, and worth passing
+    }
+  },
+}
+
+const voice = createEmbeddedVoice({ candidates, speechToText })
+const { intent, target } = await voice.handleAudio({ data, mimeType: 'audio/webm' })
+```
+
+Alternatives are worth passing. A reading that does not parse falls through
+to the next one, which recovers the common case where the top guess is
+"star tracking dean" and the second guess is right.
+
+Silence comes back as an `UNKNOWN` command, not an error. A recognizer that
+is down throws `TranscriptionFailedError`.
+
+## Confidence
+
+Every command carries a score from 0 to 1. For audio it is the recognizer's
+confidence multiplied by the parser's, which are two independent chances to
+be wrong.
+
+The parser starts at 0.9 and adjusts: up when the whole utterance is a
+known command, down when the phrase is ordinary speech as often as it is a
+command ("done", "continue"), when the command sits behind words it could
+not account for, and when a duration's unit had to be assumed.
+
+Set `minConfidence` to have anything below it reported as `UNKNOWN`
+instead. The transcript and the score survive that downgrade, so you can
+still show what was heard.
+
+## Configuration
+
+`createEmbeddedVoice` takes:
+
+| Option          | Purpose                                                          |
+| --------------- | ---------------------------------------------------------------- |
+| `candidates`    | Array or function. Records the built-in resolver matches against |
+| `speechToText`  | Required only to accept audio                                    |
+| `minConfidence` | Floor below which a command is reported as `UNKNOWN`. Default 0  |
+| `wakeWords`     | Words your app is addressed by, stripped off the front           |
+| `kindWords`     | What your users call each kind of thing. Replaces the defaults   |
+| `matching`      | `minScore` and `ambiguityMargin` for the resolver                |
+| `parser`        | Replaces the rule-based parser                                   |
+| `resolver`      | Replaces the fuzzy resolver                                      |
+
+`kindWords` maps a spoken word to `goal`, `task`, or `category`. The
+defaults cover the obvious ones; an app whose users say "sprint" or
+"client" supplies its own.
 
 ## Architecture
 
 Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
-model, or network dependency. It depends only on interfaces in
-`src/ports`, and adapters implement them:
+model, or network dependency. It depends only on interfaces in `src/ports`,
+and adapters implement them:
 
 | Port             | Purpose                               | Implementations       |
 | ---------------- | ------------------------------------- | --------------------- |
@@ -136,9 +236,21 @@ model, or network dependency. It depends only on interfaces in
 | `IntentParser`   | Transcript to intent                  | `adapters/rule-based` |
 | `TargetResolver` | Spoken name to one of your record ids | `adapters/fuzzy`      |
 
-`TargetResolver` is the seam that keeps your domain out of this package.
-It receives a name a human said out loud and returns whichever of your
-records that was, or nothing.
+`VoiceCommandService` is the whole of the core: it holds the three ports
+and knows the order to call them in. `createEmbeddedVoice` is a thin
+factory over it that picks sensible adapters.
+
+`parseCommand` is the parser as a plain synchronous function, for callers
+that have a transcript already and would rather not await anything.
+
+## Status
+
+Working and tested, but young. The intent model, both adapters, and the
+embedded entry point are in place and covered by 372 tests. Treat the API
+as unstable until 1.0.
+
+Recognizers, a standalone service mode, and a larger phrase vocabulary are
+not here yet.
 
 ## Development
 

@@ -57,6 +57,36 @@ const CONTEXTUAL_NOISE = new Set(['time'])
 const TRAILING_NOISE = new Set(['now', 'today', 'tonight', 'again', 'already'])
 
 /**
+ * A question is not a command, whatever verbs it happens to contain. "What
+ * did I work on yesterday" would otherwise match the "work on" rule and
+ * start a timer on something called yesterday.
+ *
+ * "Can" and "could" are absent on purpose: "can you start tracking deen" is
+ * a request, and normalization has already taken the polite opening off it.
+ */
+const INTERROGATIVES = new Set([
+  'what',
+  'whats',
+  'when',
+  'where',
+  'why',
+  'how',
+  'who',
+  'whom',
+  'whose',
+  'which',
+  'did',
+  'do',
+  'does',
+  'am',
+  'is',
+  'are',
+  'was',
+  'were',
+  'should',
+])
+
+/**
  * Words for "a short unspecified while". "Pause for a moment" is a bare
  * pause, not a pause on something called "moment".
  */
@@ -193,6 +223,9 @@ function findRule(tokens: readonly string[]): RuleMatch | null {
 export function parseCommand(transcript: string, options: ParseOptions = {}): VoiceIntent {
   const kindWords = options.kindWords ?? DEFAULT_KIND_WORDS
   const tokens = normalizeUtterance(transcript, options)
+
+  const opening = tokens[0]
+  if (opening !== undefined && INTERROGATIVES.has(opening)) return unknownIntent(transcript)
 
   const match = findRule(tokens)
   if (match === null) return unknownIntent(transcript)
