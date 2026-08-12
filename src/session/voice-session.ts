@@ -1,5 +1,5 @@
 import type { VoiceCommand } from '../domain/index.js'
-import type { RecognitionSession, SpeechRecognizer } from '../ports/index.js'
+import type { RecognitionSession, SpeechRecognizer, TranscriptionResult } from '../ports/index.js'
 
 export type VoiceSessionStatus = 'idle' | 'listening' | 'processing' | 'result' | 'error'
 
@@ -16,7 +16,15 @@ export interface VoiceSessionState<TResult> {
   readonly error: Error | null
 }
 
-export type TranscriptHandler<TResult> = (transcript: string) => Promise<TResult>
+/**
+ * The second argument is the recognizer's whole answer, present whenever
+ * one produced it. A handler that ignores it still typechecks; one that
+ * takes it gets the alternatives, which are the cheapest accuracy going.
+ */
+export type TranscriptHandler<TResult> = (
+  transcript: string,
+  heard?: TranscriptionResult,
+) => Promise<TResult>
 
 export interface VoiceSessionOptions<TResult> {
   readonly recognizer: SpeechRecognizer
@@ -92,7 +100,7 @@ export class VoiceSession<TResult = VoiceCommand> {
           },
           onResult: (result) => {
             if (this.stale(generation)) return
-            void this.process(generation, result.transcript)
+            void this.process(generation, result.transcript, result)
           },
           onError: (error) => {
             if (this.stale(generation)) return
@@ -135,20 +143,24 @@ export class VoiceSession<TResult = VoiceCommand> {
     if (this.current.status !== 'idle') this.set(IDLE)
   }
 
-  private async process(generation: number, transcript: string): Promise<void> {
-    const heard = { ...this.current, interimTranscript: '', transcript }
+  private async process(
+    generation: number,
+    transcript: string,
+    heard?: TranscriptionResult,
+  ): Promise<void> {
+    const settled = { ...this.current, interimTranscript: '', transcript }
 
     // Silence is not an error and there is nothing to hand on, so the session
     // finishes with an empty transcript and no result.
     if (transcript.trim().length === 0) {
-      this.set({ ...heard, status: 'result' })
+      this.set({ ...settled, status: 'result' })
       return
     }
 
-    this.set({ ...heard, status: 'processing' })
+    this.set({ ...settled, status: 'processing' })
 
     try {
-      const result = await this.options.handle(transcript)
+      const result = await this.options.handle(transcript, heard)
       if (this.stale(generation)) return
       this.set({ ...this.current, status: 'result', result })
     } catch (error) {

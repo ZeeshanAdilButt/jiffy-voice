@@ -15,6 +15,7 @@ import type {
   SpeechToText,
   TargetResolver,
   TranscriptAlternative,
+  TranscriptionResult,
 } from '../ports/index.js'
 import { classifyCommand, type CommandDecision, type ConfidencePolicy } from './decision.js'
 import {
@@ -46,11 +47,26 @@ export interface VoiceCommandServiceOptions {
 /**
  * A recognizer that reports zero is almost always saying it does not score
  * its output, not that it is certain the words are wrong. Taking it at face
- * value would multiply every command down to nothing, so an unusable score
- * is treated as no signal instead of as a bad one.
+ * value would drag every command to nothing, so an unusable score is
+ * treated as no signal instead of as a bad one.
  */
 function usableConfidence(reported: number): number {
   return Number.isFinite(reported) && reported > 0 ? clampConfidence(reported) : 1
+}
+
+/**
+ * How well it was heard and how well it parsed, as one number.
+ *
+ * Hearing a phrase clearly does not make an ambiguous phrase less
+ * ambiguous, so the recognizer can only lower the parser's score, never
+ * raise it. Below that ceiling the two are averaged geometrically rather
+ * than multiplied, because they are two estimates of the same thing and not
+ * two gates that both have to pass. Multiplying throws away commands that
+ * were understood perfectly well and merely heard at half confidence, which
+ * is most of what a phone in a pocket produces.
+ */
+function combine(parsed: number, transcribed: number): number {
+  return Math.min(parsed, Math.sqrt(parsed * transcribed))
 }
 
 /**
@@ -98,6 +114,14 @@ export class VoiceCommandService {
     return this.decide(await this.hear(clip))
   }
 
+  /**
+   * For a transcript that arrived from a live recognizer, which has already
+   * done the transcribing but still has alternatives worth trying.
+   */
+  async decideHeard(heard: TranscriptionResult): Promise<CommandDecision> {
+    return this.decide(await this.readBest(heard))
+  }
+
   private async decide(intent: VoiceIntent): Promise<CommandDecision> {
     return classifyCommand({ intent, options: await this.rankTargets(intent) }, this.policy)
   }
@@ -106,13 +130,17 @@ export class VoiceCommandService {
   private async hear(clip: AudioClip): Promise<VoiceIntent> {
     if (this.speechToText === undefined) throw new SpeechToTextUnavailableError()
 
-    let heard
+    let heard: TranscriptionResult
     try {
       heard = await this.speechToText.transcribe(clip)
     } catch (error) {
       throw new TranscriptionFailedError(error)
     }
 
+    return this.readBest(heard)
+  }
+
+  private async readBest(heard: TranscriptionResult): Promise<VoiceIntent> {
     const readings: readonly TranscriptAlternative[] = [
       { transcript: heard.transcript, confidence: heard.confidence },
       ...(heard.alternatives ?? []),
@@ -138,10 +166,7 @@ export class VoiceCommandService {
   private async interpret(transcript: string, transcribed: number): Promise<VoiceIntent> {
     const parsed = await this.parser.parse(transcript)
 
-    // Two independent chances to be wrong: mishearing the words, and
-    // misreading the words that were heard. Multiplying is the honest
-    // combination of the two.
-    const confidence = clampConfidence(parsed.confidence * usableConfidence(transcribed))
+    const confidence = clampConfidence(combine(parsed.confidence, usableConfidence(transcribed)))
 
     if (confidence < this.minConfidence) return unknownIntent(transcript, confidence)
 

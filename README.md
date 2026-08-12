@@ -367,9 +367,12 @@ throws `TranscriptionFailedError`.
 
 ## Confidence
 
-Every command carries a score from 0 to 1. For audio it is the recognizer's
-confidence multiplied by the parser's, which are two independent chances to
-be wrong.
+Every command carries a score from 0 to 1. For audio it combines the
+recognizer's confidence with the parser's, and the rule is that a
+recognizer can lower the parser's score but never raise it: hearing a
+phrase clearly does not make an ambiguous phrase less ambiguous. Below that
+ceiling the two are averaged rather than multiplied, because they are two
+estimates of the same thing rather than two gates that both have to pass.
 
 The parser starts at 0.9 and adjusts: up when the whole utterance is a
 known command, down when the phrase is ordinary speech as often as it is a
@@ -584,12 +587,19 @@ module.
 ## Development
 
 ```
-make help          # every target
+make help              # every target
 make install
-make test
-make check         # lint, typecheck, test, build
-make up            # the service, in Docker
+make test              # everything, including the end-to-end suite
+make test-integration  # just the end-to-end suite
+make check             # lint, typecheck, test, build
+make up                # the service, in Docker
 ```
+
+The end-to-end suite in `src/integration` runs the real recognizers,
+parser, resolver, policy, and HTTP app together, faking only a browser's
+speech engine, a phone's, and somebody's cloud API. It needs no
+infrastructure, so it stays in the default run rather than behind a flag
+nobody remembers to pass.
 
 ## Releasing
 

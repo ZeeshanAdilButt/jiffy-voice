@@ -42,6 +42,9 @@ test: ## Run the test suite
 test-watch: ## Tests in watch mode
 	pnpm test:watch
 
+test-integration: ## Just the end-to-end suite, which the default run includes anyway
+	pnpm test:integration
+
 ## Docker
 
 up: ## Run the service on port 8080

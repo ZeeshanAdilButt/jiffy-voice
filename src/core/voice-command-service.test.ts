@@ -284,7 +284,33 @@ describe('handleAudio', () => {
       })
 
       const command = await service.handleAudio(CLIP)
-      expect(command.intent.confidence).toBe(0.72)
+      expect(command.intent.confidence).toBe(0.85)
+    })
+
+    it('lets a recognizer lower the parser score but never raise it', async () => {
+      const service = new VoiceCommandService({
+        parser: parserFor(startTracking('deen', 0.75)),
+        speechToText: new ScriptedSpeechToText({
+          transcript: 'start tracking deen',
+          confidence: 1,
+        }),
+      })
+
+      const command = await service.handleAudio(CLIP)
+      expect(command.intent.confidence).toBe(0.75)
+    })
+
+    it('keeps a well-understood command that was merely half heard', async () => {
+      const service = new VoiceCommandService({
+        parser: parserFor(startTracking('deen', 0.9)),
+        speechToText: new ScriptedSpeechToText({
+          transcript: 'start tracking deen',
+          confidence: 0.5,
+        }),
+      })
+
+      const command = await service.handleAudio(CLIP)
+      expect(command.intent.confidence).toBeGreaterThan(0.6)
     })
 
     it('treats an unscored recognizer as no signal instead of as certainty of error', async () => {

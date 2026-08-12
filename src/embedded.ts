@@ -22,6 +22,7 @@ import type {
   SpeechToText,
   TargetCandidate,
   TargetResolver,
+  TranscriptionResult,
 } from './ports/index.js'
 
 export interface EmbeddedVoiceConfig {
@@ -65,8 +66,12 @@ export interface EmbeddedVoice {
    * else back as a fallback carrying the transcript. Total over transcripts:
    * it does not throw because of what was said, only because something it
    * depends on broke.
+   *
+   * Takes a whole TranscriptionResult as well as a bare string, so a live
+   * recognizer's alternatives are not thrown away on the way in. A reading
+   * that does not parse falls through to the next one.
    */
-  interpret(transcript: string): Promise<VoiceOutcome>
+  interpret(input: string | TranscriptionResult): Promise<VoiceOutcome>
   interpretAudio(clip: AudioClip): Promise<VoiceOutcome>
   /** What matched, without the judgement about what to do with it. */
   handleText(transcript: string): Promise<VoiceCommand>
@@ -109,9 +114,11 @@ export function createEmbeddedVoice(config: EmbeddedVoiceConfig = {}): EmbeddedV
   return {
     voice,
 
-    interpret: async (transcript) => {
-      if (transcript.trim().length === 0) return fallbackFor(transcript, 'nothing-heard')
-      return toOutcome(await voice.decideText(transcript))
+    interpret: async (input) => {
+      if (typeof input !== 'string') return toOutcome(await voice.decideHeard(input))
+      if (input.trim().length === 0) return fallbackFor(input, 'nothing-heard')
+
+      return toOutcome(await voice.decideText(input))
     },
 
     interpretAudio: async (clip) => toOutcome(await voice.decideAudio(clip)),

@@ -53,6 +53,7 @@
     "format:write": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run src/integration",
     "example:embedded": "tsx examples/embedded.ts",
     "example:fast-path": "tsx examples/fast-path.ts"
   },
