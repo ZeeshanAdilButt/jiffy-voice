@@ -1,0 +1,26 @@
+services:
+  # Nothing to depend on. The service resolves against candidates each
+  # request carries and keeps nothing between calls, so there is no database
+  # here and no second instance to demonstrate anything with: scaling this
+  # is a matter of running more copies behind a load balancer.
+  jiffy-voice:
+    build: .
+    environment:
+      # Local development only. Never use a hardcoded secret like this
+      # outside a throwaway compose environment.
+      JWT_SECRET: local-dev-secret-do-not-use-in-production
+      PORT: '8080'
+      LOG_LEVEL: debug
+    ports:
+      - '8080:8080'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3

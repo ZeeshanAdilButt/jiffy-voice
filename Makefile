@@ -42,6 +42,23 @@ test: ## Run the test suite
 test-watch: ## Tests in watch mode
 	pnpm test:watch
 
+## Docker
+
+up: ## Run the service on port 8080
+	$(COMPOSE) up --build
+
+down: ## Stop it
+	$(COMPOSE) down
+
+logs: ## Tail service logs
+	$(COMPOSE) logs -f jiffy-voice
+
+image: ## Build the container image
+	docker build -t $(IMAGE) .
+
+image-run: ## Run the built image
+	docker run --rm -p 8080:8080 		-e JWT_SECRET=$${JWT_SECRET:-local-dev-secret-do-not-use-in-production} 		$(IMAGE)
+
 ## Examples
 
 example-embedded: ## Run the in-process example

@@ -1,8 +1,8 @@
 <h1 align="center">jiffy-voice</h1>
 
 <p align="center">
-  Spoken commands into typed time-tracking intents, for apps that want
-  voice control without owning the parsing.
+  Spoken commands into typed time-tracking intents, locally, before anyone
+  reaches for a model.
 </p>
 
 <p align="center">
@@ -15,7 +15,8 @@
 </p>
 
 A user says "start tracking time for my deen goal". jiffy-voice turns that
-into something your app can act on, locally, in under a millisecond:
+into something your app can act on, in under a millisecond, with nothing
+over the network:
 
 ```json
 {
@@ -33,27 +34,96 @@ yours.
 
 ## Why
 
-Voice control tends to arrive as a pile of string matching wedged into a
-UI component: a regex for "start", another for "stop", a `.includes()`
-somewhere for the goal name, and no test that survives the next phrasing a
-real user tries. The parsing is the part worth writing once and testing
-properly, and it has nothing to do with any particular app's data model.
-
-So that is all this is. Audio or text goes in, a typed command comes out.
-Everything app-specific happens behind a port you fill in.
-
-## The fast path
-
 Most apps that want voice already have an assistant that can handle
 anything: a model that reads a sentence and produces whatever actions it
 implies. It is also a network round trip and a bill, and most of what
 people say to a timer is "stop".
 
-jiffy-voice is the tier in front of that. It answers the common,
-unambiguous utterances locally and immediately, and hands everything else
-on. Handing on is a return value, not an error:
+jiffy-voice is the tier in front of that one. It answers the common,
+unambiguous utterances immediately and hands everything else on:
+
+```
+                  "start tracking my deen goal"
+                               |
+                   +-----------v-----------+
+                   |      jiffy-voice      |   no model, no network
+                   +-----------+-----------+
+             +-----------------+------------------+
+             v                 v                  v
+          command           confirm            fallback
+        run it now      ask, then run     your assistant takes it
+```
+
+Handing on is a return value, not an error. That is the part that makes the
+arrangement work: forwarding an utterance has to be as ordinary an outcome
+as handling one, or every consumer ends up writing a happy path with a
+catch around it.
+
+The other half is that the parsing itself is worth doing properly once.
+Voice control usually arrives as string matching wedged into a UI
+component: a regex for "start", another for "stop", a `.includes()`
+somewhere for the goal name, and no test that survives the next phrasing a
+real user tries. None of that has anything to do with a particular app's
+data model, which is why it lives here instead.
+
+It runs two ways from one core:
+
+```
+   embed it                          or run it
++------------------+          +----------------------+
+|  your app        |          |  your app            |
+|  +------------+  |          +----------+-----------+
+|  |   jiffy    |  |               POST /commands
+|  +------------+  |          +----------v-----------+
++------------------+          |  jiffy-voice         |
+                              +----------------------+
+```
+
+Same core, same ports, same answers. Which one you use is a deployment
+choice, not a rewrite.
+
+## Contents
+
+- [Install](#install)
+- [Quickstart](#quickstart)
+- [What it understands](#what-it-understands)
+- [Resolving a name](#resolving-a-name)
+- [Listening](#listening)
+- [Driving a microphone button](#driving-a-microphone-button)
+- [Bringing your own recognizer](#bringing-your-own-recognizer)
+- [Confidence](#confidence)
+- [Extending the vocabulary](#extending-the-vocabulary)
+- [Running it as a service](#running-it-as-a-service)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Status](#status)
+- [Development](#development)
+
+## Install
+
+```
+npm install jiffy-voice
+```
+
+Node 20 or newer. Ships ESM and CJS builds with type declarations. The
+package entry point imports nothing outside itself, so a browser bundle of
+it carries only this code; express, jose, and pino are reached only through
+the `jiffy-voice/server` subpath.
+
+## Quickstart
 
 ```ts
+import { createEmbeddedVoice } from 'jiffy-voice'
+
+const voice = createEmbeddedVoice({
+  // Whatever your app already has. Only the parts matching needs.
+  candidates: () => [
+    { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
+    { id: 'goal_43', name: 'Fitness', kind: 'goal' },
+    { id: 'task_7', name: 'Invoices', kind: 'task' },
+  ],
+})
+
 const outcome = await voice.interpret(transcript)
 
 switch (outcome.kind) {
@@ -74,84 +144,23 @@ switch (outcome.kind) {
 }
 ```
 
-`interpret` is total over transcripts: silence, nonsense, questions, and
+`interpret` is total over transcripts. Silence, nonsense, questions, and
 whole workflows all come back as a `fallback` carrying exactly what was
 said. It throws only when something it depends on breaks, never because of
-what someone said. That is what makes the arrangement above exhaustive
-rather than a happy path with a catch around it.
+what someone said, which is what makes the switch above exhaustive.
 
-`outcome.reason` says why something fell through, which is worth logging.
-A steady stream of `no-matching-target` means the candidate list is wrong;
-a steady stream of `unrecognized-command` for the same phrasing is a
-vocabulary gap worth filling.
+`outcome.reason` says why something fell through, and is worth logging. A
+run of `no-matching-target` means the candidate list is wrong; a run of
+`unrecognized-command` for the same phrasing is a vocabulary gap worth
+filling.
 
-To see it end to end, including the timings:
-
-```
-make example-fast-path
-```
-
-## Contents
-
-- [The fast path](#the-fast-path)
-- [Install](#install)
-- [Quickstart](#quickstart)
-- [What it understands](#what-it-understands)
-- [Resolving a name](#resolving-a-name)
-- [Listening](#listening)
-- [Driving a microphone button](#driving-a-microphone-button)
-- [Speech to text](#speech-to-text)
-- [Confidence](#confidence)
-- [Deciding what to do](#deciding-what-to-do)
-- [Configuration](#configuration)
-- [Extending the vocabulary](#extending-the-vocabulary)
-- [Running it as a service](#running-it-as-a-service)
-- [Architecture](#architecture)
-- [Status](#status)
-- [Development](#development)
-
-## Install
-
-```
-npm install jiffy-voice
-```
-
-Node 20 or newer. Ships ESM and CJS builds with type declarations. The
-package entry point imports nothing outside itself, so a browser bundle of
-it carries only this code; express, jose, and pino are reached only
-through `jiffy-voice/server`.
-
-## Quickstart
-
-```ts
-import { createEmbeddedVoice } from 'jiffy-voice'
-
-const voice = createEmbeddedVoice({
-  // Whatever your app already has. Only the parts matching needs.
-  candidates: () => [
-    { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
-    { id: 'goal_43', name: 'Fitness', kind: 'goal' },
-    { id: 'task_7', name: 'Invoices', kind: 'task' },
-  ],
-})
-
-const { intent, target } = await voice.handleText('start tracking time for my deen goal')
-
-if (intent.type === 'START_TRACKING' && target !== null) {
-  startTimer(target.id) // goal_42
-}
-```
-
-`handleAudio(clip)` is the same call with a recording instead of a string,
-once a [`SpeechToText`](#speech-to-text) adapter is configured.
-
-Every part is replaceable and nothing is required: `createEmbeddedVoice()`
-with no arguments parses text and hands back the spoken name unresolved.
-
-A runnable version, including a misheard name and a command it refuses:
+Nothing is required: `createEmbeddedVoice()` with no arguments parses text
+and hands back the spoken name unresolved. Two runnable examples, one of
+them printing the timings:
 
 ```
 make example-embedded
+make example-fast-path
 ```
 
 ## What it understands
@@ -172,9 +181,9 @@ Filler, politeness, and casing come off before matching, so "hey, can you
 start tracking my deen goal please?" and "start tracking deen" reach the
 same rule.
 
-Anything else comes back as `UNKNOWN` with the transcript attached. Acting
-on a misread command costs a user more than being asked to repeat
-themselves, so the parser does not guess:
+Anything else comes back as `UNKNOWN`. Acting on a misread command costs a
+user more than being asked to repeat themselves, so the parser does not
+guess:
 
 - "cancel" is not a stop. One of those throws work away.
 - "log time for my deen goal" has no duration in it, so it is not a valid
@@ -183,11 +192,12 @@ themselves, so the parser does not guess:
   "work on" and still parses as nothing.
 
 One utterance is one command. A sentence holding two of them parses as the
-first.
+first, and a sentence describing a whole workflow is exactly what the
+fallback is for.
 
 `VoiceIntent` is a discriminated union, so `durationMinutes` exists only on
-`LOG_TIME` and `UNKNOWN` has no target field at all. Narrowing on `type`
-is the only way to reach either.
+`LOG_TIME` and `UNKNOWN` has no target field at all. Narrowing on `type` is
+the only way to reach either.
 
 ## Resolving a name
 
@@ -209,10 +219,10 @@ make: a wrong vowel, a transposition, a plural, a compound word split in
 two, a name said in part. Pass a function rather than an array when the
 list changes; it is called on every command.
 
-Two cases come back as `null` rather than a guess: nothing scored above
-the threshold, and the top two candidates were too close to tell apart.
-For the second, `rank()` returns the full scored list, so you can ask
-which one they meant instead of picking one.
+Two cases come back as `null` rather than a guess: nothing scored above the
+threshold, and the top two candidates were too close to tell apart. For the
+second, `rank()` returns the full scored list, so you can ask which one
+they meant instead of picking one.
 
 If none of that fits, implement `TargetResolver` yourself. It receives the
 spoken name and the command it came from, and returns one of your records
@@ -220,7 +230,8 @@ or nothing. Nothing else in the package notices.
 
 ## Listening
 
-In a browser, `WebSpeechRecognizer` drives the engine that is already there:
+In a browser, `WebSpeechRecognizer` drives the engine that is already
+there:
 
 ```ts
 import { isWebSpeechSupported, WebSpeechRecognizer } from 'jiffy-voice'
@@ -228,19 +239,6 @@ import { isWebSpeechSupported, WebSpeechRecognizer } from 'jiffy-voice'
 if (!isWebSpeechSupported()) {
   // Firefox and every non-browser runtime land here. Offer a text field.
 }
-
-const recognizer = new WebSpeechRecognizer({ language: 'en-US' })
-
-const session = recognizer.start({
-  onInterim: (words) => showWhileSpeaking(words),
-  onResult: async ({ transcript }) => {
-    if (transcript.length > 0) apply(await voice.handleText(transcript))
-  },
-  onError: (error) => showProblem(error),
-})
-
-micButton.onpointerup = () => session.stop()
-escapeKey.onpress = () => session.abort()
 ```
 
 Nothing is read from the global object until `start`, so the import is safe
@@ -257,11 +255,13 @@ framework anywhere in it. The same object drives a web app and a React
 Native one:
 
 ```ts
-import { VoiceSession, WebSpeechRecognizer } from 'jiffy-voice'
+import { createEmbeddedVoice, VoiceSession, WebSpeechRecognizer } from 'jiffy-voice'
+
+const voice = createEmbeddedVoice({ candidates })
 
 const session = new VoiceSession({
   recognizer: new WebSpeechRecognizer(),
-  handle: (transcript) => voice.handleText(transcript),
+  handle: (transcript) => voice.interpret(transcript),
 })
 
 session.subscribe((state) => render(state))
@@ -289,9 +289,12 @@ from a command that ran. A cancel at any point abandons the session, and a
 handler that resolves afterwards is discarded rather than written over the
 state that replaced it.
 
-## Speech to text
+## Bringing your own recognizer
 
-For a recognizer you feed audio to instead, implement `SpeechToText`:
+Recognition has two ports because the two shapes are genuinely different. A
+browser engine owns the microphone and revises its guess as someone talks,
+which is `SpeechRecognizer`. A cloud recognizer takes bytes you already
+have and answers once, which is `SpeechToText`:
 
 ```ts
 import { createEmbeddedVoice, type SpeechToText } from 'jiffy-voice'
@@ -308,15 +311,15 @@ const speechToText: SpeechToText = {
 }
 
 const voice = createEmbeddedVoice({ candidates, speechToText })
-const { intent, target } = await voice.handleAudio({ data, mimeType: 'audio/webm' })
+const outcome = await voice.interpretAudio({ data, mimeType: 'audio/webm' })
 ```
 
 Alternatives are worth passing. A reading that does not parse falls through
 to the next one, which recovers the common case where the top guess is
 "star tracking dean" and the second guess is right.
 
-Silence comes back as an `UNKNOWN` command, not an error. A recognizer that
-is down throws `TranscriptionFailedError`.
+Silence comes back as a `fallback`, not an error. A recognizer that is down
+throws `TranscriptionFailedError`.
 
 ## Confidence
 
@@ -329,37 +332,8 @@ known command, down when the phrase is ordinary speech as often as it is a
 command ("done", "continue"), when the command sits behind words it could
 not account for, and when a duration's unit had to be assumed.
 
-Set `minConfidence` to have anything below it reported as `UNKNOWN`
-instead. The transcript and the score survive that downgrade, so you can
-still show what was heard.
-
-## Deciding what to do
-
-A match or nothing is not enough to build an interface on. The middle
-state, "I think you meant this, is that right", is where a lot of real
-utterances land. `decideText` sorts one into three:
-
-```ts
-const decision = await voice.voice.decideText('start tracking deen')
-
-switch (decision.kind) {
-  case 'confident':
-    startTimer(decision.target.id)
-    break
-  case 'needs-confirmation':
-    askAbout(decision.intent, decision.options) // ranked, best first
-    break
-  case 'unresolved':
-    // Nothing here is worth acting on.
-    break
-}
-```
-
-`reason` says which line was crossed: `unrecognized-command`,
-`low-intent-confidence`, `no-matching-target`, `ambiguous-target`, or
-`low-target-score`. `options` carries the ranked candidates even on a
-confident decision, so "no, the other one" is answerable without
-resolving again.
+Where the lines fall between running a command, asking about it, and
+handing it on is the policy:
 
 | Policy option          | Default | Meaning                                               |
 | ---------------------- | ------- | ----------------------------------------------------- |
@@ -369,34 +343,25 @@ resolving again.
 | `ambiguityMargin`      | 0.05    | A runner-up this close means the audio did not choose |
 | `maxOptions`           | 3       | How many candidates to carry for a prompt             |
 
+Every default is a judgement about cost rather than a tuned number.
+Starting a timer on the wrong goal is cheap to undo and expensive to
+interrupt for, so the bar for asking sits below the bar for acting and well
+above the bar for refusing.
+
+For the layer underneath, `voice.voice.decideText()` returns a
+`CommandDecision` with a `reason` and the ranked `options`, and
 `classifyCommand` is the same logic as a pure function, so a host can
-re-sort a decision against a different policy or a freshly loaded
-candidate list without going back through recognition.
+re-sort a decision against a different policy or a freshly loaded candidate
+list without going back through recognition.
 
-## Configuration
-
-`createEmbeddedVoice` takes:
-
-| Option          | Purpose                                                           |
-| --------------- | ----------------------------------------------------------------- |
-| `candidates`    | Array or function. Records the built-in resolver matches against  |
-| `speechToText`  | Required only to accept audio                                     |
-| `minConfidence` | Floor below which a command is reported as `UNKNOWN`. Default 0   |
-| `wakeWords`     | Words your app is addressed by, stripped off the front            |
-| `kindWords`     | What your users call each kind of thing. Merged over the defaults |
-| `vocabulary`    | Extra phrasings, custom commands, and filler                      |
-| `matching`      | `minScore` and `ambiguityMargin` for the resolver                 |
-| `policy`        | Where the lines sit between running, asking, and handing on       |
-| `parser`        | Replaces the rule-based parser                                    |
-| `resolver`      | Replaces the fuzzy resolver                                       |
-
-See [Extending the vocabulary](#extending-the-vocabulary) for `kindWords`
-and `vocabulary`.
+Setting `minConfidence` reports anything below it as `UNKNOWN` before the
+policy sees it. The transcript and the score survive that downgrade, so you
+can still show what was heard.
 
 ## Extending the vocabulary
 
-Everything below adds to the built-in table rather than replacing it. An
-app that says "clock on" as well as "clock in" wants both.
+Everything here adds to the built-in table rather than replacing it. An app
+that says "clock on" as well as "clock in" wants both.
 
 ```ts
 const voice = createEmbeddedVoice({
@@ -445,10 +410,11 @@ caller is not a JavaScript process, or when several are and you would
 rather deploy the vocabulary once than ship it to each of them.
 
 ```
-docker compose up
+make up
 ```
 
-Or mount the app in a process you already run:
+Brings the service up on port 8080. Or mount the app in a process you
+already run:
 
 ```ts
 import { createHttpApp } from 'jiffy-voice/server'
@@ -467,9 +433,9 @@ Authorization: Bearer <token>
 }
 ```
 
-The response body is a `VoiceOutcome`, the same type `interpret` returns
-in process, so a consumer can share one set of types across both modes and
-switch between them without touching the code that reads the answer.
+The response body is a `VoiceOutcome`, the same type `interpret` returns in
+process, so a consumer shares one set of types across both modes and can
+move between them without touching the code that reads the answer.
 
 | Method | Path      | Purpose                                     |
 | ------ | --------- | ------------------------------------------- |
@@ -478,11 +444,37 @@ switch between them without touching the code that reads the answer.
 | GET    | /ready    | Readiness. Unauthenticated                  |
 
 Errors: 400 for a malformed body, naming the field; 401 for a missing or
-rejected token. An utterance the service cannot handle is not an error,
-it is a 200 with a `fallback` outcome.
+rejected token. An utterance the service cannot handle is not an error, it
+is a 200 with a `fallback` outcome.
 
-Optional per-request overrides: `wakeWords`, `kindWords`, `minConfidence`,
-and `policy`, each falling back to the deployment default.
+A request may override `wakeWords`, `kindWords`, `minConfidence`, and
+`policy`, each falling back to the deployment default.
+
+Tokens are verified through the same `TokenVerifier` interface the JWT
+adapter implements, so a platform with its own scheme swaps the adapter
+out. Worth being straight about what that buys here: the service resolves
+against candidates the request supplies and keeps nothing between calls, so
+the identity in the token decides nothing. The check is there to keep the
+endpoint from being open, and to put a caller in the logs.
+
+## Configuration
+
+`createEmbeddedVoice` takes:
+
+| Option          | Purpose                                                           |
+| --------------- | ----------------------------------------------------------------- |
+| `candidates`    | Array or function. Records the built-in resolver matches against  |
+| `speechToText`  | Required only to accept audio                                     |
+| `minConfidence` | Floor below which a command is reported as `UNKNOWN`. Default 0   |
+| `wakeWords`     | Words your app is addressed by, stripped off the front            |
+| `kindWords`     | What your users call each kind of thing. Merged over the defaults |
+| `vocabulary`    | Extra phrasings, custom commands, and filler                      |
+| `matching`      | `minScore` and `ambiguityMargin` for the resolver                 |
+| `policy`        | Where the lines sit between running, asking, and handing on       |
+| `parser`        | Replaces the rule-based parser                                    |
+| `resolver`      | Replaces the fuzzy resolver                                       |
+
+The service reads:
 
 | Variable            | Required         | Purpose                                      |
 | ------------------- | ---------------- | -------------------------------------------- |
@@ -496,13 +488,6 @@ and `policy`, each falling back to the deployment default.
 | `MIN_CONFIDENCE`    |                  | Confidence floor, applied to every request   |
 | `LOG_LEVEL`         |                  | Defaults to `info`                           |
 
-Tokens are verified through the same `TokenVerifier` interface the JWT
-adapter implements, so a platform with its own scheme swaps the adapter
-out. The service resolves against candidates the request supplies and
-keeps nothing between calls, so the identity in the token decides nothing:
-the check is there to keep the endpoint from being open, and to put a
-caller in the logs.
-
 ## Architecture
 
 Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
@@ -515,18 +500,12 @@ and adapters implement them:
 | `SpeechToText`     | Recorded audio to transcript          | bring your own        |
 | `IntentParser`     | Transcript to intent                  | `adapters/rule-based` |
 | `TargetResolver`   | Spoken name to one of your record ids | `adapters/fuzzy`      |
-
-Recognition has two ports rather than one because the two are genuinely
-different shapes. A cloud recognizer takes bytes you already have and
-answers once; a browser engine owns the microphone, has no bytes to hand
-over, and revises its guess as someone talks.
+| `TokenVerifier`    | Service-mode auth                     | `adapters/jwt`        |
 
 `VoiceCommandService` is the whole of the core: it holds the ports and
-knows the order to call them in. `createEmbeddedVoice` is a thin
-factory over it that picks sensible adapters.
-
-`parseCommand` is the parser as a plain synchronous function, for callers
-that have a transcript already and would rather not await anything.
+knows the order to call them in. `createEmbeddedVoice` is a thin factory
+over it that picks sensible adapters, and `parseCommand` is the parser as a
+plain synchronous function for callers that have a transcript already.
 
 `src/http` and `src/server` are the service-mode adapters, reachable only
 through the `jiffy-voice/server` subpath. Nothing under `src/index.ts`
@@ -535,12 +514,12 @@ embedder's bundle.
 
 ## Status
 
-Working and tested, but young. The intent model, both adapters, and the
-embedded entry point are in place and covered by 372 tests. Treat the API
-as unstable until 1.0.
+Working and tested, but young. Both modes, both recognition ports, the
+decision and fallback layers, and the extensibility surface are in place
+and covered by 597 tests. Treat the API as unstable until 1.0.
 
-Recognizers, a standalone service mode, and a larger phrase vocabulary are
-not here yet.
+Not here yet: Kubernetes manifests, a release workflow, and any recognizer
+beyond the browser's own.
 
 ## Development
 
@@ -549,6 +528,7 @@ make help          # every target
 make install
 make test
 make check         # lint, typecheck, test, build
+make up            # the service, in Docker
 ```
 
 ## License
