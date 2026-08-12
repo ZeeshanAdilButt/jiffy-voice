@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev build clean check lint format format-fix typecheck test test-watch \
-        example-embedded
+        example-embedded example-fast-path
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -46,3 +46,6 @@ test-watch: ## Tests in watch mode
 
 example-embedded: ## Run the in-process example
 	pnpm example:embedded
+
+example-fast-path: ## Run the fast-path and fallback example
+	pnpm example:fast-path

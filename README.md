@@ -15,7 +15,7 @@
 </p>
 
 A user says "start tracking time for my deen goal". jiffy-voice turns that
-into something your app can act on:
+into something your app can act on, locally, in under a millisecond:
 
 ```json
 {
@@ -42,8 +42,58 @@ properly, and it has nothing to do with any particular app's data model.
 So that is all this is. Audio or text goes in, a typed command comes out.
 Everything app-specific happens behind a port you fill in.
 
+## The fast path
+
+Most apps that want voice already have an assistant that can handle
+anything: a model that reads a sentence and produces whatever actions it
+implies. It is also a network round trip and a bill, and most of what
+people say to a timer is "stop".
+
+jiffy-voice is the tier in front of that. It answers the common,
+unambiguous utterances locally and immediately, and hands everything else
+on. Handing on is a return value, not an error:
+
+```ts
+const outcome = await voice.interpret(transcript)
+
+switch (outcome.kind) {
+  case 'command':
+    // Understood and resolved. Run it. No model was involved.
+    apply(outcome.intent, outcome.target)
+    break
+
+  case 'confirm':
+    // Understood, not sure enough. outcome.options is ranked, best first.
+    ask(outcome.intent, outcome.options)
+    break
+
+  case 'fallback':
+    // Not this package's problem. outcome.transcript is the raw words.
+    await assistant.send(outcome.transcript)
+    break
+}
+```
+
+`interpret` is total over transcripts: silence, nonsense, questions, and
+whole workflows all come back as a `fallback` carrying exactly what was
+said. It throws only when something it depends on breaks, never because of
+what someone said. That is what makes the arrangement above exhaustive
+rather than a happy path with a catch around it.
+
+`outcome.reason` says why something fell through, which is worth logging.
+A steady stream of `no-matching-target` means the candidate list is wrong;
+a steady stream of `unrecognized-command` for the same phrasing is a
+vocabulary gap worth filling.
+
+To see it end to end, including the timings:
+
+```
+make example-fast-path
+```
+
 ## Contents
 
+- [The fast path](#the-fast-path)
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [What it understands](#what-it-understands)

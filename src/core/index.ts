@@ -9,6 +9,18 @@ export {
   type DecisionReason,
 } from './decision.js'
 export {
+  fallbackFor,
+  isCommand,
+  isFallback,
+  needsConfirmation,
+  toOutcome,
+  type CommandOutcome,
+  type ConfirmOutcome,
+  type FallbackOutcome,
+  type FallbackReason,
+  type VoiceOutcome,
+} from './outcome.js'
+export {
   EmptyTranscriptError,
   SpeechToTextUnavailableError,
   TargetResolutionFailedError,

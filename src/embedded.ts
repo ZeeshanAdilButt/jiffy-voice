@@ -4,7 +4,13 @@ import {
   type TargetCandidateSource,
 } from './adapters/fuzzy/index.js'
 import { RuleBasedIntentParser } from './adapters/rule-based/index.js'
-import { VoiceCommandService, type ConfidencePolicy } from './core/index.js'
+import {
+  fallbackFor,
+  toOutcome,
+  VoiceCommandService,
+  type ConfidencePolicy,
+  type VoiceOutcome,
+} from './core/index.js'
 import type { TargetKind, VoiceCommand } from './domain/index.js'
 import type {
   AudioClip,
@@ -45,6 +51,15 @@ export interface EmbeddedVoiceConfig {
 
 export interface EmbeddedVoice {
   readonly voice: VoiceCommandService
+  /**
+   * The fast path. Answers for anything it is sure of and hands everything
+   * else back as a fallback carrying the transcript. Total over transcripts:
+   * it does not throw because of what was said, only because something it
+   * depends on broke.
+   */
+  interpret(transcript: string): Promise<VoiceOutcome>
+  interpretAudio(clip: AudioClip): Promise<VoiceOutcome>
+  /** What matched, without the judgement about what to do with it. */
   handleText(transcript: string): Promise<VoiceCommand>
   handleAudio(clip: AudioClip): Promise<VoiceCommand>
 }
@@ -80,6 +95,14 @@ export function createEmbeddedVoice(config: EmbeddedVoiceConfig = {}): EmbeddedV
 
   return {
     voice,
+
+    interpret: async (transcript) => {
+      if (transcript.trim().length === 0) return fallbackFor(transcript, 'nothing-heard')
+      return toOutcome(await voice.decideText(transcript))
+    },
+
+    interpretAudio: async (clip) => toOutcome(await voice.decideAudio(clip)),
+
     handleText: (transcript) => voice.handleText(transcript),
     handleAudio: (clip) => voice.handleAudio(clip),
   }
