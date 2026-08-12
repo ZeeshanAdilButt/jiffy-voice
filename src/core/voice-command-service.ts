@@ -3,16 +3,20 @@ import {
   hasNamedTarget,
   isActionable,
   unknownIntent,
+  type ActionableIntent,
+  type ResolvedTarget,
   type VoiceCommand,
   type VoiceIntent,
 } from '../domain/index.js'
 import type {
   AudioClip,
   IntentParser,
+  ResolveContext,
   SpeechToText,
   TargetResolver,
   TranscriptAlternative,
 } from '../ports/index.js'
+import { classifyCommand, type CommandDecision, type ConfidencePolicy } from './decision.js'
 import {
   EmptyTranscriptError,
   SpeechToTextUnavailableError,
@@ -32,6 +36,11 @@ export interface VoiceCommandServiceOptions {
    * the judgement to the host.
    */
   readonly minConfidence?: number
+  /**
+   * Where the lines sit between running a command, asking about it, and
+   * handing it on. Only consulted by the decide methods.
+   */
+  readonly policy?: ConfidencePolicy
 }
 
 /**
@@ -54,12 +63,14 @@ export class VoiceCommandService {
   private readonly resolver: TargetResolver | undefined
   private readonly speechToText: SpeechToText | undefined
   private readonly minConfidence: number
+  private readonly policy: ConfidencePolicy
 
   constructor(options: VoiceCommandServiceOptions) {
     this.parser = options.parser
     this.resolver = options.resolver
     this.speechToText = options.speechToText
     this.minConfidence = clampConfidence(options.minConfidence ?? 0)
+    this.policy = options.policy ?? {}
   }
 
   async handleText(transcript: string): Promise<VoiceCommand> {
@@ -69,6 +80,30 @@ export class VoiceCommandService {
   }
 
   async handleAudio(clip: AudioClip): Promise<VoiceCommand> {
+    return this.resolveCommand(await this.hear(clip))
+  }
+
+  /**
+   * What to do about the utterance, rather than only what matched in it.
+   * Uses the resolver's ranking where it has one, so a near miss comes back
+   * as a short list to choose from instead of as nothing.
+   */
+  async decideText(transcript: string): Promise<CommandDecision> {
+    if (transcript.trim().length === 0) throw new EmptyTranscriptError()
+
+    return this.decide(await this.interpret(transcript, 1))
+  }
+
+  async decideAudio(clip: AudioClip): Promise<CommandDecision> {
+    return this.decide(await this.hear(clip))
+  }
+
+  private async decide(intent: VoiceIntent): Promise<CommandDecision> {
+    return classifyCommand({ intent, options: await this.rankTargets(intent) }, this.policy)
+  }
+
+  /** Transcribe, then read the best sense anything heard can be made of. */
+  private async hear(clip: AudioClip): Promise<VoiceIntent> {
     if (this.speechToText === undefined) throw new SpeechToTextUnavailableError()
 
     let heard
@@ -92,12 +127,12 @@ export class VoiceCommandService {
       if (reading.transcript.trim().length === 0) continue
 
       const intent = await this.interpret(reading.transcript, reading.confidence)
-      if (isActionable(intent)) return this.resolveCommand(intent)
+      if (isActionable(intent)) return intent
 
       firstReading ??= intent
     }
 
-    return { intent: firstReading ?? unknownIntent(heard.transcript), target: null }
+    return firstReading ?? unknownIntent(heard.transcript)
   }
 
   private async interpret(transcript: string, transcribed: number): Promise<VoiceIntent> {
@@ -114,18 +149,38 @@ export class VoiceCommandService {
   }
 
   private async resolveCommand(intent: VoiceIntent): Promise<VoiceCommand> {
-    if (this.resolver === undefined || !hasNamedTarget(intent)) {
+    const resolver = this.resolver
+    if (resolver === undefined || !hasNamedTarget(intent)) {
       return { intent, target: null }
     }
 
     try {
-      const target = await this.resolver.resolve(intent.target, {
-        intentType: intent.type,
-        transcript: intent.transcript,
-      })
+      const target = await resolver.resolve(intent.target, this.contextFor(intent))
       return { intent, target }
     } catch (error) {
       throw new TargetResolutionFailedError(intent.target.name, error)
     }
+  }
+
+  private async rankTargets(intent: VoiceIntent): Promise<readonly ResolvedTarget[]> {
+    const resolver = this.resolver
+    if (resolver === undefined || !hasNamedTarget(intent)) return []
+
+    try {
+      // A resolver that can only answer yes or no still contributes: its one
+      // answer is a list of one, and the policy reads it the same way.
+      if (resolver.rank !== undefined) {
+        return await resolver.rank(intent.target, this.contextFor(intent))
+      }
+
+      const match = await resolver.resolve(intent.target, this.contextFor(intent))
+      return match === null ? [] : [match]
+    } catch (error) {
+      throw new TargetResolutionFailedError(intent.target.name, error)
+    }
+  }
+
+  private contextFor(intent: ActionableIntent): ResolveContext {
+    return { intentType: intent.type, transcript: intent.transcript }
   }
 }

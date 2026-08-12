@@ -52,6 +52,7 @@ Everything app-specific happens behind a port you fill in.
 - [Driving a microphone button](#driving-a-microphone-button)
 - [Speech to text](#speech-to-text)
 - [Confidence](#confidence)
+- [Deciding what to do](#deciding-what-to-do)
 - [Configuration](#configuration)
 - [Architecture](#architecture)
 - [Status](#status)
@@ -277,6 +278,46 @@ Set `minConfidence` to have anything below it reported as `UNKNOWN`
 instead. The transcript and the score survive that downgrade, so you can
 still show what was heard.
 
+## Deciding what to do
+
+A match or nothing is not enough to build an interface on. The middle
+state, "I think you meant this, is that right", is where a lot of real
+utterances land. `decideText` sorts one into three:
+
+```ts
+const decision = await voice.voice.decideText('start tracking deen')
+
+switch (decision.kind) {
+  case 'confident':
+    startTimer(decision.target.id)
+    break
+  case 'needs-confirmation':
+    askAbout(decision.intent, decision.options) // ranked, best first
+    break
+  case 'unresolved':
+    // Nothing here is worth acting on.
+    break
+}
+```
+
+`reason` says which line was crossed: `unrecognized-command`,
+`low-intent-confidence`, `no-matching-target`, `ambiguous-target`, or
+`low-target-score`. `options` carries the ranked candidates even on a
+confident decision, so "no, the other one" is answerable without
+resolving again.
+
+| Policy option          | Default | Meaning                                               |
+| ---------------------- | ------- | ----------------------------------------------------- |
+| `autoIntentConfidence` | 0.8     | At or above this, run it without asking               |
+| `minIntentConfidence`  | 0.5     | Below this, not worth confirming either               |
+| `autoTargetScore`      | 0.8     | At or above this, use the match without asking        |
+| `ambiguityMargin`      | 0.05    | A runner-up this close means the audio did not choose |
+| `maxOptions`           | 3       | How many candidates to carry for a prompt             |
+
+`classifyCommand` is the same logic as a pure function, so a host can
+re-sort a decision against a different policy or a freshly loaded
+candidate list without going back through recognition.
+
 ## Configuration
 
 `createEmbeddedVoice` takes:
@@ -289,6 +330,7 @@ still show what was heard.
 | `wakeWords`     | Words your app is addressed by, stripped off the front           |
 | `kindWords`     | What your users call each kind of thing. Replaces the defaults   |
 | `matching`      | `minScore` and `ambiguityMargin` for the resolver                |
+| `policy`        | Where the lines sit between running, asking, and handing on      |
 | `parser`        | Replaces the rule-based parser                                   |
 | `resolver`      | Replaces the fuzzy resolver                                      |
 

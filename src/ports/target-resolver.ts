@@ -34,4 +34,13 @@ export interface ResolveContext {
  */
 export interface TargetResolver {
   resolve(target: NamedTarget, context?: ResolveContext): Promise<ResolvedTarget | null>
+  /**
+   * Every candidate worth considering, best first. Optional: a host whose
+   * lookup can only answer yes or no implements `resolve` alone and the
+   * layers above treat its answer as a list of one.
+   *
+   * Worth implementing when you can, because it is what turns "no match" into
+   * "did you mean one of these three".
+   */
+  rank?(target: NamedTarget, context?: ResolveContext): Promise<readonly ResolvedTarget[]>
 }

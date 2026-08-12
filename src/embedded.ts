@@ -4,7 +4,7 @@ import {
   type TargetCandidateSource,
 } from './adapters/fuzzy/index.js'
 import { RuleBasedIntentParser } from './adapters/rule-based/index.js'
-import { VoiceCommandService } from './core/index.js'
+import { VoiceCommandService, type ConfidencePolicy } from './core/index.js'
 import type { TargetKind, VoiceCommand } from './domain/index.js'
 import type {
   AudioClip,
@@ -36,6 +36,11 @@ export interface EmbeddedVoiceConfig {
   readonly kindWords?: Readonly<Record<string, TargetKind>>
   /** Thresholds for the built-in resolver. */
   readonly matching?: Pick<FuzzyTargetResolverOptions, 'minScore' | 'ambiguityMargin'>
+  /**
+   * Where the lines sit between running a command, asking about it, and
+   * handing it on.
+   */
+  readonly policy?: ConfidencePolicy
 }
 
 export interface EmbeddedVoice {
@@ -70,6 +75,7 @@ export function createEmbeddedVoice(config: EmbeddedVoiceConfig = {}): EmbeddedV
     resolver: buildResolver(config),
     speechToText: config.speechToText,
     minConfidence: config.minConfidence,
+    policy: config.policy,
   })
 
   return {
