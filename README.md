@@ -90,7 +90,7 @@ choice, not a rewrite.
 - [Resolving a name](#resolving-a-name)
 - [Listening](#listening)
 - [Driving a microphone button](#driving-a-microphone-button)
-- [Bringing your own recognizer](#bringing-your-own-recognizer)
+- [Other recognizers](#other-recognizers)
 - [Confidence](#confidence)
 - [Extending the vocabulary](#extending-the-vocabulary)
 - [Running it as a service](#running-it-as-a-service)
@@ -291,34 +291,76 @@ from a command that ran. A cancel at any point abandons the session, and a
 handler that resolves afterwards is discarded rather than written over the
 state that replaced it.
 
-## Bringing your own recognizer
+## Other recognizers
 
-Recognition has two ports because the two shapes are genuinely different. A
-browser engine owns the microphone and revises its guess as someone talks,
-which is `SpeechRecognizer`. A cloud recognizer takes bytes you already
-have and answers once, which is `SpeechToText`:
+Recognition has two ports because the two shapes are genuinely different.
+An engine that owns the microphone and revises its guess as someone talks
+is a `SpeechRecognizer`. One that takes bytes you already have and answers
+once is a `SpeechToText`.
+
+### React Native, and anything else with a platform engine
+
+There is no Web Speech API outside the browser, and no one React Native
+speech library worth depending on: the field has three, they disagree, and
+any of them in the install path would put a native module in front of every
+consumer including the ones running in a browser. So the shape is an
+interface you implement, usually as about a dozen lines of forwarding:
 
 ```ts
-import { createEmbeddedVoice, type SpeechToText } from 'jiffy-voice'
+import { NativeSpeechRecognizer, type NativeSpeechModule } from 'jiffy-voice'
+import Voice from '@react-native-voice/voice'
 
-const speechToText: SpeechToText = {
-  async transcribe(clip) {
-    const heard = await myRecognizer.run(clip.data, clip.mimeType)
-    return {
-      transcript: heard.best,
-      confidence: heard.confidence,
-      alternatives: heard.rest, // optional, and worth passing
-    }
+const speech: NativeSpeechModule = {
+  subscribe(events) {
+    Voice.onSpeechPartialResults = (e) => events.onPartial(e.value ?? [])
+    Voice.onSpeechResults = (e) => events.onResults(e.value ?? [])
+    Voice.onSpeechError = (e) => events.onError({ code: e.error?.code })
+    Voice.onSpeechEnd = () => events.onEnd()
+    return () => void Voice.removeAllListeners()
   },
+  start: ({ language }) => Voice.start(language ?? 'en-US'),
+  stop: () => Voice.stop(),
+  cancel: () => Voice.cancel(),
 }
+
+const recognizer = new NativeSpeechRecognizer(speech)
+```
+
+The adapter owns the awkward part, which is the same one the browser
+adapter deals with: a session that ends exactly once, silence that is not
+an error, a cancel that discards whatever arrives afterwards, and one
+result per session however many events the engine emitted. Android's
+numeric error codes and the string codes every other engine reports are
+mapped to the same error classes, so a denied microphone is
+`MicrophonePermissionDeniedError` wherever it came from.
+
+### A cloud recognition API
+
+`HttpSpeechToText` owns transport and leaves the provider-specific parts as
+two functions, because a config format for request and response shapes
+would only ever approximate them:
+
+```ts
+import { createEmbeddedVoice, HttpSpeechToText } from 'jiffy-voice'
+
+const speechToText = new HttpSpeechToText({
+  url: 'https://api.example.com/v1/transcribe',
+  headers: { authorization: `Bearer ${key}` },
+  parse: (body) => ({ transcript: body.text, confidence: body.confidence }),
+})
 
 const voice = createEmbeddedVoice({ candidates, speechToText })
 const outcome = await voice.interpretAudio({ data, mimeType: 'audio/webm' })
 ```
 
-Alternatives are worth passing. A reading that does not parse falls through
-to the next one, which recovers the common case where the top guess is
-"star tracking dean" and the second guess is right.
+It posts the bytes under the clip's own media type unless you pass
+`buildRequest`, applies a timeout, and turns a non-2xx into a
+`SpeechServiceError` carrying the status and the provider's message. Uses
+the runtime's own fetch and nothing else.
+
+Whichever you use, alternatives are worth passing. A reading that does not
+parse falls through to the next one, which recovers the common case where
+the top guess is "star tracking dean" and the second guess is right.
 
 Silence comes back as a `fallback`, not an error. A recognizer that is down
 throws `TranscriptionFailedError`.
@@ -511,13 +553,13 @@ Ports and adapters. The core (`src/core`, `src/domain`) has no framework,
 model, or network dependency. It depends only on interfaces in `src/ports`,
 and adapters implement them:
 
-| Port               | Purpose                               | Implementations       |
-| ------------------ | ------------------------------------- | --------------------- |
-| `SpeechRecognizer` | Live microphone to transcript         | `adapters/web-speech` |
-| `SpeechToText`     | Recorded audio to transcript          | bring your own        |
-| `IntentParser`     | Transcript to intent                  | `adapters/rule-based` |
-| `TargetResolver`   | Spoken name to one of your record ids | `adapters/fuzzy`      |
-| `TokenVerifier`    | Service-mode auth                     | `adapters/jwt`        |
+| Port               | Purpose                               | Implementations                                 |
+| ------------------ | ------------------------------------- | ----------------------------------------------- |
+| `SpeechRecognizer` | Live microphone to transcript         | `adapters/web-speech`, `adapters/native-speech` |
+| `SpeechToText`     | Recorded audio to transcript          | `adapters/http-speech`                          |
+| `IntentParser`     | Transcript to intent                  | `adapters/rule-based`                           |
+| `TargetResolver`   | Spoken name to one of your record ids | `adapters/fuzzy`                                |
+| `TokenVerifier`    | Service-mode auth                     | `adapters/jwt`                                  |
 
 `VoiceCommandService` is the whole of the core: it holds the ports and
 knows the order to call them in. `createEmbeddedVoice` is a thin factory
@@ -535,7 +577,9 @@ Working and tested, but young. Both modes, both recognition ports, the
 decision and fallback layers, and the extensibility surface are in place
 and covered by 597 tests. Treat the API as unstable until 1.0.
 
-Not here yet: any recognizer beyond the browser's own.
+Recognizers are a browser adapter, an adapter over a platform engine a
+host wraps, and one over a cloud HTTP API. Nothing bundles a native
+module.
 
 ## Development
 

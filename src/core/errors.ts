@@ -34,3 +34,42 @@ export class TargetResolutionFailedError extends Error {
     this.name = 'TargetResolutionFailedError'
   }
 }
+
+/**
+ * The errors below belong to no single recognizer. A host catching a denied
+ * microphone should not have to know which adapter produced it, and one
+ * class per adapter would mean handling the same condition twice. Adapters
+ * raise these; the core only passes them along.
+ */
+
+export class MicrophonePermissionDeniedError extends Error {
+  constructor() {
+    super('Microphone access was denied')
+    this.name = 'MicrophonePermissionDeniedError'
+  }
+}
+
+export class AudioCaptureError extends Error {
+  constructor() {
+    super('No microphone was available to capture audio')
+    this.name = 'AudioCaptureError'
+  }
+}
+
+export class RecognizerNetworkError extends Error {
+  constructor() {
+    super('The recognition service could not be reached')
+    this.name = 'RecognizerNetworkError'
+  }
+}
+
+/** Anything a recognizer reported that does not map to one of the above. */
+export class SpeechRecognitionFailedError extends Error {
+  constructor(
+    readonly code: string,
+    detail?: string,
+  ) {
+    super(detail === undefined ? `Recognition failed: ${code}` : `Recognition failed: ${detail}`)
+    this.name = 'SpeechRecognitionFailedError'
+  }
+}

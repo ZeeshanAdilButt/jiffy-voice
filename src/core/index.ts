@@ -21,7 +21,11 @@ export {
   type VoiceOutcome,
 } from './outcome.js'
 export {
+  AudioCaptureError,
   EmptyTranscriptError,
+  MicrophonePermissionDeniedError,
+  RecognizerNetworkError,
+  SpeechRecognitionFailedError,
   SpeechToTextUnavailableError,
   TargetResolutionFailedError,
   TranscriptionFailedError,

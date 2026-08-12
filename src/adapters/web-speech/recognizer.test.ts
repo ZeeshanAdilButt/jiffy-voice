@@ -6,8 +6,8 @@ import {
   MicrophonePermissionDeniedError,
   RecognizerNetworkError,
   SpeechRecognitionFailedError,
-  SpeechRecognitionUnsupportedError,
-} from './errors.js'
+} from '../../core/errors.js'
+import { SpeechRecognitionUnsupportedError } from './errors.js'
 import { isWebSpeechSupported, WebSpeechRecognizer } from './recognizer.js'
 import type {
   SpeechRecognitionAlternativeLike,
