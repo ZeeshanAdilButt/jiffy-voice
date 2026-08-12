@@ -9,7 +9,7 @@ import { parseCommandRequest, type CommandRequest } from './request.js'
  */
 export type CommandDefaults = Pick<
   EmbeddedVoiceConfig,
-  'wakeWords' | 'kindWords' | 'minConfidence' | 'matching' | 'policy'
+  'wakeWords' | 'kindWords' | 'minConfidence' | 'matching' | 'policy' | 'vocabulary'
 >
 
 function configFor(request: CommandRequest, defaults: CommandDefaults): EmbeddedVoiceConfig {

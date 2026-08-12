@@ -1,7 +1,7 @@
 import type { NamedTarget, ResolvedTarget, TargetKind } from '../../domain/index.js'
 import type { TargetCandidate, TargetResolver } from '../../ports/index.js'
+import { compileKindWords, type KindWordOverrides } from '../rule-based/vocabulary.js'
 import { foldText } from '../../text/fold.js'
-import { DEFAULT_KIND_WORDS } from '../../text/kind-words.js'
 import { similarity } from './similarity.js'
 
 /**
@@ -25,7 +25,8 @@ export type TargetCandidateSource = () =>
 export interface FuzzyTargetResolverOptions {
   readonly minScore?: number
   readonly ambiguityMargin?: number
-  readonly kindWords?: Readonly<Record<string, TargetKind>>
+  /** Merged over the built-in set, the same way the parser merges them. */
+  readonly kindWords?: KindWordOverrides
 }
 
 function compareStrings(a: string, b: string): number {
@@ -61,7 +62,7 @@ export class FuzzyTargetResolver implements TargetResolver {
     this.candidates = candidates
     this.minScore = options.minScore ?? DEFAULT_MIN_SCORE
     this.ambiguityMargin = options.ambiguityMargin ?? DEFAULT_AMBIGUITY_MARGIN
-    this.kindWords = options.kindWords ?? DEFAULT_KIND_WORDS
+    this.kindWords = compileKindWords(options.kindWords)
   }
 
   /**

@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { matchesAt, normalizeUtterance } from './normalize.js'
+import { normalizeUtterance as normalize } from './normalize.js'
+import { matchesAt } from './tokens.js'
+import { compileVocabulary } from './vocabulary.js'
+
+const DEFAULT = compileVocabulary()
+
+function normalizeUtterance(
+  transcript: string,
+  options?: Parameters<typeof normalize>[2],
+): readonly string[] {
+  return normalize(transcript, DEFAULT, options)
+}
 
 describe('normalizeUtterance', () => {
   it('folds and splits an ordinary command', () => {

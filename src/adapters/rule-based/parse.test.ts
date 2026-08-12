@@ -308,11 +308,18 @@ describe('options', () => {
     expect(intentTarget(intent)).toEqual({ kind: 'category', name: 'acme' })
   })
 
-  it('replaces the defaults rather than adding to them', () => {
+  it('adds to the defaults rather than replacing them', () => {
     const intent = parseCommand('start tracking my deen goal', {
       kindWords: { client: 'category' },
     })
-    expect(intentTarget(intent)).toEqual({ kind: 'unspecified', name: 'deen goal' })
+    expect(intentTarget(intent)).toEqual({ kind: 'goal', name: 'deen' })
+  })
+
+  it('drops a built-in kind word when the host maps it to nothing', () => {
+    const intent = parseCommand('start tracking the acme project', {
+      kindWords: { project: null },
+    })
+    expect(intentTarget(intent)).toEqual({ kind: 'unspecified', name: 'acme project' })
   })
 })
 

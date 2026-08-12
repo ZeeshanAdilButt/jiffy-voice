@@ -3,7 +3,11 @@ import {
   type FuzzyTargetResolverOptions,
   type TargetCandidateSource,
 } from './adapters/fuzzy/index.js'
-import { RuleBasedIntentParser } from './adapters/rule-based/index.js'
+import {
+  RuleBasedIntentParser,
+  type KindWordOverrides,
+  type Vocabulary,
+} from './adapters/rule-based/index.js'
 import {
   fallbackFor,
   toOutcome,
@@ -11,7 +15,7 @@ import {
   type ConfidencePolicy,
   type VoiceOutcome,
 } from './core/index.js'
-import type { TargetKind, VoiceCommand } from './domain/index.js'
+import type { VoiceCommand } from './domain/index.js'
 import type {
   AudioClip,
   IntentParser,
@@ -38,8 +42,13 @@ export interface EmbeddedVoiceConfig {
   readonly minConfidence?: number
   /** Words your app is addressed by, stripped off the front of an utterance. */
   readonly wakeWords?: readonly string[]
-  /** What your users call each kind of thing. Used by both built-in adapters. */
-  readonly kindWords?: Readonly<Record<string, TargetKind>>
+  /**
+   * What your users call each kind of thing, merged over the built-in set
+   * and used by both built-in adapters. A null value drops a built-in word.
+   */
+  readonly kindWords?: KindWordOverrides
+  /** Phrasings and filler on top of the built-in table. */
+  readonly vocabulary?: Vocabulary
   /** Thresholds for the built-in resolver. */
   readonly matching?: Pick<FuzzyTargetResolverOptions, 'minScore' | 'ambiguityMargin'>
   /**
@@ -83,7 +92,11 @@ function buildResolver(config: EmbeddedVoiceConfig): TargetResolver | undefined 
 export function createEmbeddedVoice(config: EmbeddedVoiceConfig = {}): EmbeddedVoice {
   const parser =
     config.parser ??
-    new RuleBasedIntentParser({ wakeWords: config.wakeWords, kindWords: config.kindWords })
+    new RuleBasedIntentParser({
+      wakeWords: config.wakeWords,
+      kindWords: config.kindWords,
+      vocabulary: config.vocabulary,
+    })
 
   const voice = new VoiceCommandService({
     parser,

@@ -1,4 +1,5 @@
 import type { ConfidencePolicy } from '../core/index.js'
+import type { KindWordOverrides } from '../adapters/rule-based/index.js'
 import { isTargetKind, type TargetKind } from '../domain/index.js'
 import type { TargetCandidate } from '../ports/index.js'
 
@@ -6,7 +7,7 @@ export interface CommandRequest {
   readonly transcript: string
   readonly candidates: readonly TargetCandidate[]
   readonly wakeWords?: readonly string[]
-  readonly kindWords?: Readonly<Record<string, TargetKind>>
+  readonly kindWords?: KindWordOverrides
   readonly minConfidence?: number
   readonly policy?: ConfidencePolicy
 }
@@ -59,15 +60,16 @@ function parseCandidate(value: unknown, index: number): TargetCandidate {
   return aliases === undefined ? { id, name, kind } : { id, name, kind, aliases }
 }
 
-function parseKindWords(value: unknown): Readonly<Record<string, TargetKind>> | undefined {
+function parseKindWords(value: unknown): KindWordOverrides | undefined {
   if (value === undefined) return undefined
 
   const source = asRecord(value, 'kindWords')
-  const result: Record<string, TargetKind> = {}
+  const result: Record<string, TargetKind | null> = {}
 
   for (const [word, kind] of Object.entries(source)) {
-    if (!isTargetKind(kind)) {
-      throw new BadRequestError(`kindWords.${word} must be goal, task, or category`)
+    // Null is how a caller drops a built-in word rather than adding one.
+    if (kind !== null && !isTargetKind(kind)) {
+      throw new BadRequestError(`kindWords.${word} must be goal, task, category, or null`)
     }
     result[word] = kind
   }

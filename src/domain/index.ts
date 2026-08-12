@@ -10,6 +10,7 @@ export {
 
 export type {
   ActionableIntent,
+  CustomIntent,
   IntentType,
   LogTimeIntent,
   PauseIntent,

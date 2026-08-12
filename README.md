@@ -104,6 +104,7 @@ make example-fast-path
 - [Confidence](#confidence)
 - [Deciding what to do](#deciding-what-to-do)
 - [Configuration](#configuration)
+- [Extending the vocabulary](#extending-the-vocabulary)
 - [Running it as a service](#running-it-as-a-service)
 - [Architecture](#architecture)
 - [Status](#status)
@@ -155,13 +156,14 @@ make example-embedded
 
 ## What it understands
 
-| Intent           | Said as                                                                 |
-| ---------------- | ----------------------------------------------------------------------- |
-| `START_TRACKING` | start, start tracking X, begin, clock in on X, working on X             |
-| `STOP_TRACKING`  | stop, stop tracking, clock out, I'm done, wrap up                       |
-| `PAUSE`          | pause, pause the timer, hold on, take a break                           |
-| `RESUME`         | resume, unpause, continue, keep going, back to work                     |
-| `LOG_TIME`       | log 30 minutes to X, I spent an hour and a half on X, bill 2 hours to X |
+| Intent           | Said as                                                                     |
+| ---------------- | --------------------------------------------------------------------------- |
+| `START_TRACKING` | start, start tracking X, begin, clock in on X, working on X                 |
+| `STOP_TRACKING`  | stop, stop tracking, clock out, I'm done, wrap up                           |
+| `PAUSE`          | pause, pause the timer, hold on, take a break                               |
+| `RESUME`         | resume, unpause, continue, keep going, back to work                         |
+| `LOG_TIME`       | log 30 minutes to X, I spent an hour and a half on X, bill 2 hours to X     |
+| `CUSTOM`         | whatever you add. See [Extending the vocabulary](#extending-the-vocabulary) |
 
 Durations are read as spoken: `30 minutes`, `1h 30m`, `half an hour`,
 `an hour and a half`, `three quarters of an hour`, `90 seconds`.
@@ -375,21 +377,66 @@ candidate list without going back through recognition.
 
 `createEmbeddedVoice` takes:
 
-| Option          | Purpose                                                          |
-| --------------- | ---------------------------------------------------------------- |
-| `candidates`    | Array or function. Records the built-in resolver matches against |
-| `speechToText`  | Required only to accept audio                                    |
-| `minConfidence` | Floor below which a command is reported as `UNKNOWN`. Default 0  |
-| `wakeWords`     | Words your app is addressed by, stripped off the front           |
-| `kindWords`     | What your users call each kind of thing. Replaces the defaults   |
-| `matching`      | `minScore` and `ambiguityMargin` for the resolver                |
-| `policy`        | Where the lines sit between running, asking, and handing on      |
-| `parser`        | Replaces the rule-based parser                                   |
-| `resolver`      | Replaces the fuzzy resolver                                      |
+| Option          | Purpose                                                           |
+| --------------- | ----------------------------------------------------------------- |
+| `candidates`    | Array or function. Records the built-in resolver matches against  |
+| `speechToText`  | Required only to accept audio                                     |
+| `minConfidence` | Floor below which a command is reported as `UNKNOWN`. Default 0   |
+| `wakeWords`     | Words your app is addressed by, stripped off the front            |
+| `kindWords`     | What your users call each kind of thing. Merged over the defaults |
+| `vocabulary`    | Extra phrasings, custom commands, and filler                      |
+| `matching`      | `minScore` and `ambiguityMargin` for the resolver                 |
+| `policy`        | Where the lines sit between running, asking, and handing on       |
+| `parser`        | Replaces the rule-based parser                                    |
+| `resolver`      | Replaces the fuzzy resolver                                       |
 
-`kindWords` maps a spoken word to `goal`, `task`, or `category`. The
-defaults cover the obvious ones; an app whose users say "sprint" or
-"client" supplies its own.
+See [Extending the vocabulary](#extending-the-vocabulary) for `kindWords`
+and `vocabulary`.
+
+## Extending the vocabulary
+
+Everything below adds to the built-in table rather than replacing it. An
+app that says "clock on" as well as "clock in" wants both.
+
+```ts
+const voice = createEmbeddedVoice({
+  candidates,
+  kindWords: { sprint: 'category', client: 'category' },
+  vocabulary: {
+    phrases: [
+      { phrase: 'clock on', type: 'START_TRACKING' },
+      { phrase: 'knock off', type: 'STOP_TRACKING' },
+      { phrase: 'invoice', type: 'LOG_TIME', needsDuration: true },
+      { phrase: 'take five', type: 'CUSTOM', name: 'BREAK' },
+    ],
+    fillers: ['bitte'],
+  },
+})
+```
+
+`kindWords` merges over the defaults; mapping a word to `null` drops a
+built-in one, which is how an app that means something else by "project"
+says so.
+
+Custom commands arrive as a single `CUSTOM` variant carrying a `name`
+rather than as new `type` strings. Widening the discriminant to `string`
+would cost every consumer their exhaustive switch to buy something only
+some of them use:
+
+```ts
+if (intent.type === 'CUSTOM' && intent.name === 'BREAK') startBreak()
+```
+
+Repeating a phrase already in the table replaces its meaning rather than
+doubling it, and `removePhrases` drops one outright, which is how you turn
+off a loose match like "done" for an app where stopping is expensive.
+`weak` and `needsDuration` work on added phrases exactly as they do on
+built-in ones.
+
+Added phrases go through the same folding and filler stripping a transcript
+does, so an entry written the way someone would actually say it works.
+Compilation is cached against the vocabulary object, so a parser built once
+and used on every interim transcript pays for it once.
 
 ## Running it as a service
 

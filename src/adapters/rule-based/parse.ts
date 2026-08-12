@@ -8,10 +8,16 @@ import {
   type TargetKind,
   type VoiceIntent,
 } from '../../domain/index.js'
-import { DEFAULT_KIND_WORDS } from '../../text/kind-words.js'
 import { findDuration } from './duration.js'
-import { matchesAt, normalizeUtterance, type NormalizeOptions } from './normalize.js'
-import { COMMAND_RULES, type CommandRule } from './rules.js'
+import { normalizeUtterance, type NormalizeOptions } from './normalize.js'
+import type { CommandRule } from './rules.js'
+import { matchesAt } from './tokens.js'
+import {
+  compileKindWords,
+  compileVocabulary,
+  type KindWordOverrides,
+  type Vocabulary,
+} from './vocabulary.js'
 
 const BASE_CONFIDENCE = 0.9
 const EXACT_PHRASE_BONUS = 0.05
@@ -109,11 +115,14 @@ const VAGUE_TIME = new Set([
 
 export interface ParseOptions extends NormalizeOptions {
   /**
-   * Words that say what type of thing was named, mapped to the kind they
-   * mean. Supplying this replaces the defaults, which is the seam for an app
-   * whose users say "sprint" or "client" instead of "project".
+   * Words that say what type of thing was named, merged over the built-in
+   * set. This is the seam for an app whose users say "sprint" or "client";
+   * a null value drops a built-in word for an app that means something else
+   * by it.
    */
-  readonly kindWords?: Readonly<Record<string, TargetKind>>
+  readonly kindWords?: KindWordOverrides
+  /** Phrasings and filler on top of the built-in table. */
+  readonly vocabulary?: Vocabulary
 }
 
 function stripTargetNoise(tokens: readonly string[]): readonly string[] {
@@ -202,11 +211,11 @@ interface RuleMatch {
   readonly lead: number
 }
 
-function findRule(tokens: readonly string[]): RuleMatch | null {
+function findRule(tokens: readonly string[], rules: readonly CommandRule[]): RuleMatch | null {
   const maxLead = Math.min(MAX_LEAD_TOKENS, Math.max(tokens.length - 1, 0))
 
   for (let lead = 0; lead <= maxLead; lead += 1) {
-    for (const rule of COMMAND_RULES) {
+    for (const rule of rules) {
       if (matchesAt(tokens, lead, rule.phrase)) return { rule, lead }
     }
   }
@@ -221,13 +230,14 @@ function findRule(tokens: readonly string[]): RuleMatch | null {
  * costs a user more than being asked to repeat themselves.
  */
 export function parseCommand(transcript: string, options: ParseOptions = {}): VoiceIntent {
-  const kindWords = options.kindWords ?? DEFAULT_KIND_WORDS
-  const tokens = normalizeUtterance(transcript, options)
+  const vocabulary = compileVocabulary(options.vocabulary)
+  const kindWords = compileKindWords(options.kindWords)
+  const tokens = normalizeUtterance(transcript, vocabulary, options)
 
   const opening = tokens[0]
   if (opening !== undefined && INTERROGATIVES.has(opening)) return unknownIntent(transcript)
 
-  const match = findRule(tokens)
+  const match = findRule(tokens, vocabulary.rules)
   if (match === null) return unknownIntent(transcript)
 
   const { rule, lead } = match
@@ -270,5 +280,7 @@ export function parseCommand(transcript: string, options: ParseOptions = {}): Vo
       return { type: 'RESUME', target, transcript, confidence }
     case 'LOG_TIME':
       return { type: 'LOG_TIME', target, transcript, confidence, durationMinutes }
+    case 'CUSTOM':
+      return { type: 'CUSTOM', name: rule.name, target, transcript, confidence }
   }
 }

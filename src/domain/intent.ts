@@ -13,6 +13,7 @@ export const INTENT_TYPES = [
   'PAUSE',
   'RESUME',
   'LOG_TIME',
+  'CUSTOM',
   'UNKNOWN',
 ] as const
 
@@ -53,6 +54,19 @@ export interface LogTimeIntent extends IntentFields {
 }
 
 /**
+ * A command the host added to the vocabulary. Custom commands are one
+ * variant carrying a name rather than an open set of type strings, because
+ * widening the discriminant to `string` would cost every consumer their
+ * exhaustive switch to buy something only a few of them use.
+ */
+export interface CustomIntent extends IntentFields {
+  readonly type: 'CUSTOM'
+  /** Whatever the vocabulary entry that matched called it. */
+  readonly name: string
+  readonly target: IntentTarget
+}
+
+/**
  * The parser understood nothing it is willing to act on. Note that this
  * carries no target at all rather than a `none` target, so a host cannot
  * read a target off an intent that has no meaning without narrowing first.
@@ -62,7 +76,12 @@ export interface UnknownIntent extends IntentFields {
 }
 
 export type ActionableIntent =
-  StartTrackingIntent | StopTrackingIntent | PauseIntent | ResumeIntent | LogTimeIntent
+  | StartTrackingIntent
+  | StopTrackingIntent
+  | PauseIntent
+  | ResumeIntent
+  | LogTimeIntent
+  | CustomIntent
 
 export type VoiceIntent = ActionableIntent | UnknownIntent
 
@@ -100,7 +119,7 @@ export function intentTarget(intent: VoiceIntent): IntentTarget {
   return isActionable(intent) ? intent.target : NO_TARGET
 }
 
-const INTENT_VERBS: Record<Exclude<IntentType, 'UNKNOWN'>, string> = {
+const INTENT_VERBS: Record<Exclude<IntentType, 'UNKNOWN' | 'CUSTOM'>, string> = {
   START_TRACKING: 'start tracking',
   STOP_TRACKING: 'stop tracking',
   PAUSE: 'pause',
@@ -115,7 +134,7 @@ const INTENT_VERBS: Record<Exclude<IntentType, 'UNKNOWN'>, string> = {
 export function describeIntent(intent: VoiceIntent): string {
   if (!isActionable(intent)) return 'unknown command'
 
-  const verb = INTENT_VERBS[intent.type]
+  const verb = intent.type === 'CUSTOM' ? intent.name : INTENT_VERBS[intent.type]
   const isLog = intent.type === 'LOG_TIME'
   const duration = isLog ? ` ${formatDurationMinutes(intent.durationMinutes)}` : ''
   const preposition = isLog ? ' to ' : ' '

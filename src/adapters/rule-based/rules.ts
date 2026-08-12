@@ -1,8 +1,9 @@
 import type { ActionableIntent } from '../../domain/index.js'
 
-export interface CommandRule {
+export type BuiltInIntentType = Exclude<ActionableIntent['type'], 'CUSTOM'>
+
+interface RuleFields {
   readonly phrase: readonly string[]
-  readonly type: ActionableIntent['type']
   /**
    * Ordinary enough in unrelated speech that matching it is a guess worth
    * discounting. "Done" almost always means stop; it also turns up in the
@@ -16,8 +17,19 @@ export interface CommandRule {
   readonly needsDuration: boolean
 }
 
+export interface BuiltInRule extends RuleFields {
+  readonly type: BuiltInIntentType
+}
+
+export interface CustomRule extends RuleFields {
+  readonly type: 'CUSTOM'
+  readonly name: string
+}
+
+export type CommandRule = BuiltInRule | CustomRule
+
 interface RuleGroup {
-  readonly type: ActionableIntent['type']
+  readonly type: BuiltInIntentType
   readonly phrases: readonly string[]
   readonly weakPhrases?: readonly string[]
   readonly needsDuration?: boolean
@@ -139,7 +151,7 @@ const GROUPS: readonly RuleGroup[] = [
   },
 ]
 
-function toRules(group: RuleGroup): CommandRule[] {
+function toRules(group: RuleGroup): BuiltInRule[] {
   const strong = group.phrases.map((phrase) => ({
     phrase: phrase.split(' '),
     type: group.type,
@@ -157,11 +169,67 @@ function toRules(group: RuleGroup): CommandRule[] {
   return [...strong, ...weak]
 }
 
+export const BASE_RULES: readonly CommandRule[] = GROUPS.flatMap(toRules)
+
 /**
  * Longest phrase first, which is the whole of the disambiguation strategy:
  * "start again" is a resume and "start tracking" is not, and both would
  * match the bare "start" rule if a shorter phrase were ever tried first.
+ *
+ * The sort is stable, so two phrases of the same length keep the order they
+ * were declared in and the table stays deterministic.
  */
-export const COMMAND_RULES: readonly CommandRule[] = GROUPS.flatMap(toRules).sort(
-  (a, b) => b.phrase.length - a.phrase.length,
-)
+export function sortRules(rules: readonly CommandRule[]): readonly CommandRule[] {
+  return [...rules].sort((a, b) => b.phrase.length - a.phrase.length)
+}
+
+export const COMMAND_RULES: readonly CommandRule[] = sortRules(BASE_RULES)
+
+/** Politeness and throat-clearing, only ever stripped from the front. */
+export const LEADING_PHRASES: readonly string[] = [
+  'hey there',
+  'hey',
+  'hi',
+  'hello',
+  'yo',
+  'yeah',
+  'yep',
+  'ok',
+  'okay',
+  'so',
+  'well',
+  'alright',
+  'all right',
+  'please',
+  'just',
+  'now',
+  'can you',
+  'could you',
+  'would you',
+  'will you',
+  'can we',
+  'i want to',
+  'i want you to',
+  'i would like to',
+  'id like to',
+  'i need to',
+  'i need you to',
+  'we need to',
+  'lets',
+  'let us',
+  'go ahead and',
+  'you can',
+]
+
+/** Only ever stripped from the end. */
+export const TRAILING_PHRASES: readonly string[] = [
+  'please',
+  'thanks',
+  'thank you',
+  'for me',
+  'will you',
+  'would you',
+  'ok',
+  'okay',
+  'alright',
+]
