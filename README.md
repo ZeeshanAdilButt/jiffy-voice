@@ -49,6 +49,7 @@ Everything app-specific happens behind a port you fill in.
 - [What it understands](#what-it-understands)
 - [Resolving a name](#resolving-a-name)
 - [Listening](#listening)
+- [Driving a microphone button](#driving-a-microphone-button)
 - [Speech to text](#speech-to-text)
 - [Confidence](#confidence)
 - [Configuration](#configuration)
@@ -192,6 +193,45 @@ recognition service arrive as `MicrophonePermissionDeniedError`,
 `AudioCaptureError`, and `RecognizerNetworkError`. Silence does not arrive
 as an error at all: it ends the session with an empty transcript, because
 hearing nothing is an answer.
+
+## Driving a microphone button
+
+`VoiceSession` is the interaction itself as a state machine, with no UI
+framework anywhere in it. The same object drives a web app and a React
+Native one:
+
+```ts
+import { VoiceSession, WebSpeechRecognizer } from 'jiffy-voice'
+
+const session = new VoiceSession({
+  recognizer: new WebSpeechRecognizer(),
+  handle: (transcript) => voice.handleText(transcript),
+})
+
+session.subscribe((state) => render(state))
+
+button.onpointerdown = () => session.start()
+button.onpointerup = () => session.stop()
+escape.onpress = () => session.cancel()
+```
+
+```
+idle --start--> listening --stop or a settled transcript--> processing
+processing --handled--> result
+listening or processing --a real failure--> error
+anything --cancel--> idle
+```
+
+`state` is one frozen object replaced on every change and `subscribe`
+returns its own unsubscribe, which is exactly the contract
+`useSyncExternalStore` wants. The package does not import React to say so.
+
+`state.interimTranscript` holds the words as they arrive, for showing while
+someone talks. `state.transcript` is what the recognizer settled on, and an
+empty one means it heard nothing: `heardNothing(state)` distinguishes that
+from a command that ran. A cancel at any point abandons the session, and a
+handler that resolves afterwards is discarded rather than written over the
+state that replaced it.
 
 ## Speech to text
 
