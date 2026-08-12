@@ -389,17 +389,9 @@ const speech: NativeSpeechModule = {
       void Voice.removeAllListeners()
     }
   },
-  // Wrapped rather than forwarded directly, because these three resolve to
-  // the module's own value and the port promises void.
-  start: async ({ language }) => {
-    await Voice.start(language ?? 'en-US')
-  },
-  stop: async () => {
-    await Voice.stop()
-  },
-  cancel: async () => {
-    await Voice.cancel()
-  },
+  start: ({ language }) => Voice.start(language ?? 'en-US'),
+  stop: () => Voice.stop(),
+  cancel: () => Voice.cancel(),
 }
 ```
 
@@ -834,17 +826,9 @@ const speech: NativeSpeechModule = {
       void Voice.removeAllListeners()
     }
   },
-  // start, stop, and cancel promise void here and resolve to the module's
-  // own value there, so they are wrapped rather than forwarded directly.
-  start: async ({ language }) => {
-    await Voice.start(language ?? 'en-US')
-  },
-  stop: async () => {
-    await Voice.stop()
-  },
-  cancel: async () => {
-    await Voice.cancel()
-  },
+  start: ({ language }) => Voice.start(language ?? 'en-US'),
+  stop: () => Voice.stop(),
+  cancel: () => Voice.cancel(),
 }
 
 const recognizer = new NativeSpeechRecognizer(speech)

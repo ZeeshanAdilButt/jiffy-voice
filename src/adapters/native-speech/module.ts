@@ -37,9 +37,15 @@ export interface NativeSpeechStartOptions {
 export interface NativeSpeechModule {
   /** Attach handlers for one session and return a teardown. */
   subscribe(events: NativeSpeechEvents): () => void
-  start(options: NativeSpeechStartOptions): void | Promise<void>
+  // These return `unknown` rather than `void` so a host can forward
+  // straight to its speech library. Every one of them resolves to
+  // something, and TypeScript's return-type-void exemption only applies
+  // when the target is exactly `void`, not a union containing it, so
+  // `Promise<void>` would force a throwaway async wrapper per method. The
+  // resolved value is never read; only rejection matters.
+  start(options: NativeSpeechStartOptions): void | Promise<unknown>
   /** Stop listening and let whatever was heard come through. */
-  stop(): void | Promise<void>
+  stop(): void | Promise<unknown>
   /** Stop listening and discard it. */
-  cancel(): void | Promise<void>
+  cancel(): void | Promise<unknown>
 }
