@@ -12,4 +12,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Plain JavaScript run directly by Node, so the globals it uses have to
+    // be named. The TypeScript files get theirs from @types/node instead.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
+    },
+  },
 )

@@ -55,7 +55,8 @@
     "test:watch": "vitest",
     "test:integration": "vitest run src/integration",
     "example:embedded": "tsx examples/embedded.ts",
-    "example:fast-path": "tsx examples/fast-path.ts"
+    "example:fast-path": "tsx examples/fast-path.ts",
+    "example:browser": "node examples/serve.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

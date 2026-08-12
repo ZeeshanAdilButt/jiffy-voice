@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jiffy-voice in a browser</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --line: color-mix(in srgb, currentColor 15%, transparent);
+        --muted: color-mix(in srgb, currentColor 60%, transparent);
+        --panel: color-mix(in srgb, currentColor 4%, transparent);
+      }
+      body {
+        font:
+          16px/1.6 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        margin: 0 auto;
+        max-width: 46rem;
+        padding: 2rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 0.25rem;
+      }
+      p.lede {
+        color: var(--muted);
+        margin: 0 0 2rem;
+      }
+      section {
+        border-top: 1px solid var(--line);
+        padding-top: 1.25rem;
+        margin-top: 1.75rem;
+      }
+      h2 {
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 0.75rem;
+      }
+      button {
+        font: inherit;
+        padding: 0.6rem 1.1rem;
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        background: var(--panel);
+        color: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      button[data-listening='true'] {
+        background: color-mix(in srgb, tomato 25%, transparent);
+        border-color: tomato;
+      }
+      input[type='text'] {
+        font: inherit;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        background: transparent;
+        color: inherit;
+        width: min(100%, 28rem);
+      }
+      .row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .status {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
+      .heard {
+        min-height: 1.6em;
+        font-size: 1.15rem;
+      }
+      .heard[data-interim='true'] {
+        color: var(--muted);
+      }
+      pre {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        padding: 0.9rem;
+        overflow-x: auto;
+        margin: 0;
+        font-size: 0.85rem;
+      }
+      ul {
+        margin: 0;
+        padding-left: 1.1rem;
+        color: var(--muted);
+      }
+      code {
+        background: var(--panel);
+        padding: 0.1em 0.35em;
+        border-radius: 0.25rem;
+      }
+      .verdict {
+        font-weight: 600;
+        margin: 0 0 0.6rem;
+      }
+      .warn {
+        border: 1px solid tomato;
+        border-radius: 0.5rem;
+        padding: 0.9rem;
+        margin-bottom: 1.5rem;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>jiffy-voice</h1>
+    <p class="lede">
+      Hold the button and say something. Nothing leaves this page except whatever your browser's own
+      speech engine sends to decode the audio.
+    </p>
+
+    <div class="warn" id="unsupported" hidden>
+      This browser has no speech recognition, so the microphone is off. Chrome, Edge, and Safari
+      have one; Firefox does not. The text box below still works and runs exactly the same code from
+      the settled transcript onwards.
+    </div>
+
+    <section>
+      <h2>Try saying</h2>
+      <ul>
+        <li>start tracking time for my deen goal</li>
+        <li>log an hour and a half to my deen goal</li>
+        <li>pause, then resume</li>
+        <li>stop tracking</li>
+        <li>start tracking dean (a vowel wrong, and it still resolves)</li>
+        <li>how much time did I spend on deen (a question, so it falls through)</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Listen</h2>
+      <div class="row">
+        <button id="mic">Hold to talk</button>
+        <button id="cancel" disabled>Cancel</button>
+        <span class="status" id="status">idle</span>
+      </div>
+      <p class="heard" id="heard"></p>
+    </section>
+
+    <section>
+      <h2>Or type it</h2>
+      <form class="row" id="typed">
+        <input type="text" id="transcript" placeholder="start tracking my deen goal" />
+        <button type="submit">Interpret</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Outcome</h2>
+      <p class="verdict" id="verdict">Nothing yet.</p>
+      <pre id="outcome">{}</pre>
+    </section>
+
+    <section>
+      <h2>Records it can match against</h2>
+      <pre id="candidates"></pre>
+    </section>
+
+    <script type="module">
+      import {
+        createEmbeddedVoice,
+        describeIntent,
+        isWebSpeechSupported,
+        VoiceSession,
+        WebSpeechRecognizer,
+      } from '../../dist/index.js'
+
+      // Stands in for whatever the host app already has loaded.
+      const candidates = [
+        { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
+        { id: 'goal_43', name: 'Fitness', kind: 'goal' },
+        { id: 'task_7', name: 'Invoices', kind: 'task' },
+        { id: 'cat_3', name: 'Deep Work', kind: 'category' },
+      ]
+
+      const voice = createEmbeddedVoice({ candidates })
+
+      const el = (id) => document.getElementById(id)
+      el('candidates').textContent = JSON.stringify(candidates, null, 2)
+
+      function describeOutcome(outcome, elapsedMs) {
+        const took = `${elapsedMs.toFixed(1)}ms, no model call`
+
+        switch (outcome.kind) {
+          case 'command':
+            return `Run it: ${describeIntent(outcome.intent)} on ${
+              outcome.target ? `${outcome.target.id} (${outcome.target.name})` : 'the running timer'
+            } (${took})`
+          case 'confirm': {
+            const options = outcome.options.map((option) => option.name).join(', ')
+            return `Ask first: ${describeIntent(outcome.intent)}${
+              options ? `, meaning one of ${options}` : ''
+            } (${took})`
+          }
+          case 'fallback':
+            return `Hand to your assistant: ${outcome.reason} (${took})`
+        }
+      }
+
+      async function interpret(input) {
+        const started = performance.now()
+        const outcome = await voice.interpret(input)
+
+        el('verdict').textContent = describeOutcome(outcome, performance.now() - started)
+        el('outcome').textContent = JSON.stringify(outcome, null, 2)
+      }
+
+      el('typed').addEventListener('submit', (event) => {
+        event.preventDefault()
+        const said = el('transcript').value.trim()
+        if (said.length > 0) void interpret(said)
+      })
+
+      if (!isWebSpeechSupported()) {
+        el('unsupported').hidden = false
+        el('mic').disabled = true
+      } else {
+        const session = new VoiceSession({
+          recognizer: new WebSpeechRecognizer({ language: 'en-US' }),
+          // The second argument is the recognizer's whole answer, so its
+          // alternatives survive rather than being dropped for a string.
+          handle: (transcript, heard) => voice.interpret(heard ?? transcript),
+        })
+
+        session.subscribe((state) => {
+          el('status').textContent = state.error ? `error: ${state.error.message}` : state.status
+          el('mic').dataset.listening = String(state.status === 'listening')
+          el('cancel').disabled = state.status === 'idle'
+
+          const words = state.interimTranscript || state.transcript || ''
+          el('heard').textContent = words
+          el('heard').dataset.interim = String(state.interimTranscript.length > 0)
+
+          if (state.status === 'result' && state.result) {
+            el('verdict').textContent = describeOutcome(state.result, 0)
+            el('outcome').textContent = JSON.stringify(state.result, null, 2)
+          } else if (state.status === 'result' && state.transcript === '') {
+            el('verdict').textContent = 'Heard nothing.'
+          }
+        })
+
+        // Press and hold, which is what a timer control usually wants: the
+        // user decides when they have finished talking, not a silence timer.
+        el('mic').addEventListener('pointerdown', () => session.start())
+        el('mic').addEventListener('pointerup', () => session.stop())
+        el('mic').addEventListener('pointerleave', () => session.stop())
+        el('cancel').addEventListener('click', () => session.cancel())
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') session.cancel()
+        })
+      }
+    </script>
+  </body>
+</html>

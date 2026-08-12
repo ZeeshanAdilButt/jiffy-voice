@@ -157,13 +157,20 @@ run of `no-matching-target` means the candidate list is wrong; a run of
 filling.
 
 Nothing is required: `createEmbeddedVoice()` with no arguments parses text
-and hands back the spoken name unresolved. Two runnable examples, one of
-them printing the timings:
+and hands back the spoken name unresolved.
+
+Three runnable examples:
 
 ```
-make example-embedded
-make example-fast-path
+make example-embedded     # in process, against a candidate list
+make example-fast-path    # the two tiers, with timings
+make example-browser      # a page with a microphone button
 ```
+
+The browser one is a single HTML file with no framework and no build step
+of its own. It has a text box as well as a microphone, so it still
+demonstrates the whole path from transcript onwards in a browser with no
+speech engine.
 
 ## What it understands
 

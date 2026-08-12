@@ -70,6 +70,9 @@ example-embedded: ## Run the in-process example
 example-fast-path: ## Run the fast-path and fallback example
 	pnpm example:fast-path
 
+example-browser: build ## Build, then serve the browser example
+	pnpm example:browser
+
 ## Kubernetes
 
 k8s-validate: ## Validate manifests, no cluster needed
