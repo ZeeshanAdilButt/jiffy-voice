@@ -43,9 +43,9 @@ Everything app-specific happens behind an interface you implement.
 
 ## Status
 
-Early. The intent model, the ports, and the rule-based parser are in
-place; target resolution and the wiring that ties them together are
-landing next. Treat the API as unstable until 1.0.
+Early. The intent model, the ports, the parser, and the resolver are in
+place; the service that wires them together is landing next. Treat the
+API as unstable until 1.0.
 
 ## Install
 
@@ -95,6 +95,34 @@ Filler, politeness, and casing are removed before matching, so "hey, can
 you start tracking my deen goal please?" and "start tracking deen" reach
 the same rule. One utterance is one command; a sentence holding two of
 them parses as the first.
+
+## Resolving a name
+
+The parser gives you the name a person said. Turning that into one of
+your records is the `TargetResolver` port. `FuzzyTargetResolver` covers
+it for a list of candidates you supply:
+
+```ts
+import { FuzzyTargetResolver } from 'jiffy-voice'
+
+const resolver = new FuzzyTargetResolver(() => [
+  { id: 'goal_42', name: 'Deen', kind: 'goal', aliases: ['Islamic Studies'] },
+  { id: 'goal_43', name: 'Fitness', kind: 'goal' },
+])
+
+await resolver.resolve({ kind: 'goal', name: 'dean' })
+// { id: 'goal_42', name: 'Deen', kind: 'goal', score: 0.85, matchedOn: 'Deen' }
+```
+
+Scoring is deterministic and tolerant of the errors recognizers actually
+make: a wrong vowel, a transposition, a plural, a compound word split in
+two, a name said in part. Pass a function rather than an array when your
+list changes; it is called on every resolve.
+
+Two cases come back as `null` rather than a guess: nothing scored above
+the threshold, and the top two candidates were too close to tell apart.
+For the second, `rank()` returns the full scored list so you can ask the
+user which one they meant.
 
 ## Architecture
 

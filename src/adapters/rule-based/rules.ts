@@ -1,4 +1,4 @@
-import type { ActionableIntent, TargetKind } from '../../domain/index.js'
+import type { ActionableIntent } from '../../domain/index.js'
 
 export interface CommandRule {
   readonly phrase: readonly string[]
@@ -165,18 +165,3 @@ function toRules(group: RuleGroup): CommandRule[] {
 export const COMMAND_RULES: readonly CommandRule[] = GROUPS.flatMap(toRules).sort(
   (a, b) => b.phrase.length - a.phrase.length,
 )
-
-export const DEFAULT_KIND_WORDS: Readonly<Record<string, TargetKind>> = {
-  goal: 'goal',
-  goals: 'goal',
-  objective: 'goal',
-  task: 'task',
-  tasks: 'task',
-  todo: 'task',
-  item: 'task',
-  category: 'category',
-  categories: 'category',
-  project: 'category',
-  bucket: 'category',
-  area: 'category',
-}

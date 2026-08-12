@@ -8,9 +8,10 @@ import {
   type TargetKind,
   type VoiceIntent,
 } from '../../domain/index.js'
+import { DEFAULT_KIND_WORDS } from '../../text/kind-words.js'
 import { findDuration } from './duration.js'
 import { matchesAt, normalizeUtterance, type NormalizeOptions } from './normalize.js'
-import { COMMAND_RULES, DEFAULT_KIND_WORDS, type CommandRule } from './rules.js'
+import { COMMAND_RULES, type CommandRule } from './rules.js'
 
 const BASE_CONFIDENCE = 0.9
 const EXACT_PHRASE_BONUS = 0.05
