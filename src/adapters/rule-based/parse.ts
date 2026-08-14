@@ -149,9 +149,17 @@ function stripTargetNoise(tokens: readonly string[]): readonly string[] {
     break
   }
 
+  // A name never ends in connective tissue. Stripping it matters once a
+  // duration span in front of it has been removed by findDuration, which
+  // deliberately leaves a leading "for" alone (it belongs to the duration
+  // side, e.g. "30 minutes for deen") but has no way to know when that same
+  // "for" was actually trailing the target instead ("deen for 20 minutes")
+  // — from the target's own tokens, both look identical. Without this, that
+  // ordering leaves the target named "deen for" instead of "deen".
   while (end > start) {
     const token = tokens[end - 1]
-    if (token === undefined || !TRAILING_NOISE.has(token)) break
+    if (token === undefined) break
+    if (!TRAILING_NOISE.has(token) && !CONNECTIVES.has(token) && !DETERMINERS.has(token)) break
     end -= 1
   }
 

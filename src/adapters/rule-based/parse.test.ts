@@ -217,6 +217,20 @@ describe('logging time after the fact', () => {
     })
   })
 
+  it('keeps the target when the duration follows it instead, connected by "for"', () => {
+    // The mirror image of the case above: findDuration deliberately leaves a
+    // LEADING "for" alone (it belongs to "30 minutes for deen"), but that
+    // same word trailing the target ("deen for 20 minutes") looks identical
+    // from the target's own tokens and must be stripped just the same, or
+    // it's glued onto the name — and once it's the last token, it can also
+    // eat the kind suffix that would otherwise follow the target's own name.
+    expect(targetOf('i worked on deen for 20 minutes')).toEqual({ kind: 'unspecified', name: 'deen' })
+    expect(targetOf('record time on the fitness category for 2 hours')).toEqual({
+      kind: 'category',
+      name: 'fitness',
+    })
+  })
+
   it('reads a bare number as minutes, which is the only unit anyone means', () => {
     expect(minutesOf('log 45 to my deen goal')).toBe(45)
     expect(targetOf('log 45 to my deen goal')).toEqual({ kind: 'goal', name: 'deen' })
